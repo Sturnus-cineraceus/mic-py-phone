@@ -9,7 +9,9 @@ def main():
     html_path = Path(__file__).parent.parent / "web" / "index.html"
     url = html_path.resolve().as_uri()
     api = Api()
-    webview.create_window("pywebview Demo", url, width=900, height=700, js_api=api)
+    webview.create_window(
+        "pymic - Audio Bypass", url, width=900, height=700, js_api=api
+    )
     webview.start()
 
 

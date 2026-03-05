@@ -75,5 +75,60 @@ pyinstaller --onedir --noconsole --add-data "web;web" main.py
 .\dist\main\main.exe
 ```
 
-````
+## 開発ルール
+
+- コードをコミットする前に、必ずフォーマットを整えてください:
+
+```powershell
+ruff format .
+```
+
+このリポジトリでは `ruff` をコードフォーマットに使用します。まだインストールしていない場合は、開発環境にインストールしてください（例: `pip install ruff`）。
+
+---
+
+## 追加情報
+
+プロジェクトの概要、起動方法、ビルド手順は以下の通りです。
+
+簡単な pywebview デモアプリです。
+
+準備と実行:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python main.py
+```
+
+ファイル:
+- [main.py](main.py)
+- [web/index.html](web/index.html)
+- [pymic/](pymic)
+
+パッケージとして起動する推奨方法:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m pymic
+# 互換性のため `python main.py` でも起動可能
+```
+
+PyInstaller でのビルド (Windows 例):
+
+```powershell
+pip install pyinstaller
+pyinstaller --onefile --noconsole --add-data "web;web" main.py
+```
+
+ビルド後の実行例:
+
+```powershell
+.\dist\main.exe
+# または
+.\dist\main\main.exe
+```
 

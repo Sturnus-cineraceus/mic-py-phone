@@ -1,50 +1,21 @@
-document.getElementById('themeBtn').addEventListener('click', ()=>{
-  document.body.classList.toggle('dark');
-});
+document.getElementById('audioBtn').addEventListener('click', loadAudioDevices);
+document.getElementById('startBtn').addEventListener('click', startBypass);
+document.getElementById('stopBtn').addEventListener('click', stopBypass);
 
-document.getElementById('calcBtn').addEventListener('click', onCalculate);
-document.getElementById('sysBtn').addEventListener('click', onGetSys);
-document.getElementById('audioBtn').addEventListener('click', onGetAudio);
-
-async function onCalculate(){
-  const op = document.getElementById('op').value;
-  const val = document.getElementById('value').value;
-  const resEl = document.getElementById('result');
-  resEl.textContent = '処理中...';
-  try{
-    const resp = await window.pywebview.api.calculate(op, val);
-    if(resp.error) resEl.textContent = 'エラー: ' + resp.error;
-    else resEl.textContent = '結果: ' + resp.result;
-  }catch(e){
-    resEl.textContent = '呼び出し失敗: ' + e;
-  }
-}
-
-async function onGetSys(){
-  const infoEl = document.getElementById('sysinfo');
-  infoEl.textContent = '取得中...';
-  try{
-    const info = await window.pywebview.api.get_system_info();
-    infoEl.textContent = `Platform: ${info.platform} | Python: ${info.python}`;
-  }catch(e){
-    infoEl.textContent = '取得失敗: ' + e;
-  }
-}
-
-async function onGetAudio(){
-  const el = document.getElementById('audiolist');
-  el.textContent = '取得中...';
+async function loadAudioDevices(){
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = '状態: デバイス取得中...';
   try{
     const resp = await window.pywebview.api.get_audio_devices();
     if(resp.error){
-      el.textContent = 'エラー: ' + resp.error;
+      statusEl.textContent = 'エラー: ' + resp.error;
       return;
     }
     const devices = resp.devices || [];
     const hostapis = resp.hostapis || [];
     const defaultDev = resp.default_device;
     if(devices.length === 0){
-      el.textContent = 'デバイスが見つかりませんでした。';
+      statusEl.textContent = 'デバイスが見つかりません。';
       return;
     }
 
@@ -53,22 +24,17 @@ async function onGetAudio(){
     inputSelect.innerHTML = '';
     outputSelect.innerHTML = '';
 
-    // Show only WASAPI hostapi devices (flat list). If none, fall back to flat devices list.
-    let wasapiDevices = [];
+    // Prefer grouping by hostapi where possible, otherwise use flat list
+    let candidateDevices = devices;
     if(hostapis.length > 0){
-      hostapis.forEach(h => {
-        const name = (h.name || '').toString().toUpperCase();
-        if(name.includes('WASAPI')){
-          (h.devices || []).forEach(d => {
-            // avoid duplicates
-            if(!wasapiDevices.find(x => x.index === d.index)) wasapiDevices.push(d);
-          });
-        }
-      });
+      // flatten hostapi devices to avoid duplicates
+      const seen = new Set();
+      const flat = [];
+      hostapis.forEach(h => { (h.devices||[]).forEach(d => { if(!seen.has(d.index)){ seen.add(d.index); flat.push(d); } }); });
+      if(flat.length > 0) candidateDevices = flat;
     }
 
-    const listToUse = (wasapiDevices.length > 0) ? wasapiDevices : devices;
-    listToUse.forEach(d => {
+    candidateDevices.forEach(d => {
       const opt = document.createElement('option');
       opt.value = d.index;
       opt.text = `${d.name} (idx:${d.index})`;
@@ -80,7 +46,7 @@ async function onGetAudio(){
       }
     });
 
-    // set defaults if available
+    // set defaults if provided by backend
     if(Array.isArray(defaultDev)){
       const inIdx = defaultDev[0];
       const outIdx = defaultDev[1];
@@ -94,23 +60,41 @@ async function onGetAudio(){
       }
     }
 
-    // use onchange to avoid duplicate handlers on repeated loads
     inputSelect.onchange = async (e) => {
       const idx = e.target.value;
-      try{ await window.pywebview.api.set_input_device(idx); el.textContent = 'マイク選択: ' + idx; }catch(err){ el.textContent = '設定失敗: ' + err; }
+      try{ await window.pywebview.api.set_input_device(idx); statusEl.textContent = '状態: 入力選択 ' + idx; }catch(err){ statusEl.textContent = '設定失敗: ' + err; }
     };
     outputSelect.onchange = async (e) => {
       const idx = e.target.value;
-      try{ await window.pywebview.api.set_output_device(idx); el.textContent = 'スピーカー選択: ' + idx; }catch(err){ el.textContent = '設定失敗: ' + err; }
+      try{ await window.pywebview.api.set_output_device(idx); statusEl.textContent = '状態: 出力選択 ' + idx; }catch(err){ statusEl.textContent = '設定失敗: ' + err; }
     };
 
-    el.textContent = 'デバイスが読み込まれました。ホストAPIごとにグループ表示しています。';
+    statusEl.textContent = '状態: デバイス読み込み完了';
   }catch(e){
-    el.textContent = '取得失敗: ' + e;
+    document.getElementById('status').textContent = '取得失敗: ' + e;
   }
 }
 
-function showMessage(){
-  const el = document.getElementById('message');
-  el.textContent = 'こんにちは！ pywebview サンプルです。';
+async function startBypass(){
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = '状態: バイパス開始中...';
+  try{
+    const resp = await window.pywebview.api.start_bypass();
+    if(resp.error){ statusEl.textContent = '開始失敗: ' + resp.error; return; }
+    statusEl.textContent = '状態: 実行中';
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('stopBtn').disabled = false;
+  }catch(e){ statusEl.textContent = '開始失敗: ' + e; }
+}
+
+async function stopBypass(){
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = '状態: 停止中...';
+  try{
+    const resp = await window.pywebview.api.stop_bypass();
+    if(resp.error){ statusEl.textContent = '停止失敗: ' + resp.error; return; }
+    statusEl.textContent = '状態: 停止';
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled = true;
+  }catch(e){ statusEl.textContent = '停止失敗: ' + e; }
 }

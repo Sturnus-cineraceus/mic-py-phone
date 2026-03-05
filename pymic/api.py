@@ -1,6 +1,3 @@
-from pathlib import Path
-import platform
-import sys
 import traceback
 
 try:
@@ -10,38 +7,20 @@ except Exception:
 
 
 class Api:
-    def calculate(self, op, value):
-        try:
-            v = int(value)
-        except Exception:
-            return {"error": "invalid number"}
+    """Audio bypass API: list/select devices and start/stop a direct input->output passthrough."""
 
-        if op == "square":
-            return {"result": v * v}
-        if op == "factorial":
-            if v < 0 or v > 20:
-                return {"error": "n must be between 0 and 20"}
-
-            def fact(n):
-                return 1 if n <= 1 else n * fact(n - 1)
-
-            return {"result": fact(v)}
-
-        return {"error": "unknown operation"}
-
-    def get_system_info(self):
-        return {"platform": platform.platform(), "python": sys.version.split()[0]}
-
-    def echo(self, text):
-        return {"echo": text}
+    def __init__(self):
+        self.selected_input = None
+        self.selected_output = None
+        self.stream = None
 
     def get_audio_devices(self):
         if sd is None:
             return {"error": "sounddevice not available"}
         try:
-            # Use host APIs to gather devices, but keep a flattened devices list for compatibility
             hostapis = sd.query_hostapis()
             devs = sd.query_devices()
+
             try:
                 default_dev = sd.default.device
                 if default_dev is not None:
@@ -76,9 +55,24 @@ class Api:
                         h_devices.append(devices[idx])
                 hostapi_list.append({"name": h_name, "devices": h_devices})
 
+            # Filter to WASAPI host APIs only (case-insensitive). If none are present,
+            # return an error because the UI should allow selection only for WASAPI.
+            wasapi_list = [h for h in hostapi_list if isinstance(h.get("name"), str) and "WASAPI" in h.get("name").upper()]
+            if not wasapi_list:
+                return {"error": "WASAPI host API not available on this system"}
+
+            # Flatten devices from WASAPI hostapis and remove duplicates by index
+            seen = set()
+            wasapi_devices = []
+            for h in wasapi_list:
+                for d in h.get("devices", []):
+                    if d and d.get("index") not in seen:
+                        seen.add(d.get("index"))
+                        wasapi_devices.append(d)
+
             return {
-                "devices": devices,
-                "hostapis": hostapi_list,
+                "devices": wasapi_devices,
+                "hostapis": wasapi_list,
                 "default_device": default_dev,
             }
         except Exception as e:
@@ -101,7 +95,78 @@ class Api:
             return {"error": "invalid index", "detail": str(e)}
 
     def get_selected_devices(self):
-        return {
-            "input": getattr(self, "selected_input", None),
-            "output": getattr(self, "selected_output", None),
-        }
+        return {"input": self.selected_input, "output": self.selected_output}
+
+    def is_running(self):
+        return {"running": self.stream is not None}
+
+    def start_bypass(self):
+        if sd is None:
+            return {"error": "sounddevice not available"}
+
+        if self.stream is not None:
+            return {"error": "already running"}
+
+        if self.selected_input is None or self.selected_output is None:
+            return {"error": "input or output device not selected"}
+
+        try:
+            in_dev = sd.query_devices(self.selected_input)
+            out_dev = sd.query_devices(self.selected_output)
+
+            samplerate = int(
+                in_dev.get("default_samplerate")
+                or out_dev.get("default_samplerate")
+                or 44100
+            )
+            in_channels = in_dev.get("max_input_channels") or 1
+            out_channels = out_dev.get("max_output_channels") or 1
+            channels = max(in_channels, out_channels)
+
+            def callback(indata, outdata, frames, time, status):
+                if status:
+                    # ignore status, don't raise inside audio callback
+                    pass
+                try:
+                    # handle mono/stereo shapes
+                    if indata.ndim == 1:
+                        # mono input
+                        outdata[:, 0] = indata
+                        if outdata.shape[1] > 1:
+                            outdata[:, 1:] = 0
+                    else:
+                        nch = min(indata.shape[1], outdata.shape[1])
+                        outdata[:, :nch] = indata[:, :nch]
+                        if outdata.shape[1] > nch:
+                            outdata[:, nch:] = 0
+                except Exception:
+                    outdata.fill(0)
+
+            self.stream = sd.Stream(
+                device=(self.selected_input, self.selected_output),
+                samplerate=samplerate,
+                channels=channels,
+                callback=callback,
+            )
+            self.stream.start()
+            return {"running": True}
+        except Exception as e:
+            self.stream = None
+            return {"error": str(e), "trace": traceback.format_exc()}
+
+    def stop_bypass(self):
+        if self.stream is None:
+            return {"error": "not running"}
+        try:
+            try:
+                self.stream.stop()
+            except Exception:
+                pass
+            try:
+                self.stream.close()
+            except Exception:
+                pass
+            self.stream = None
+            return {"running": False}
+        except Exception as e:
+            return {"error": str(e), "trace": traceback.format_exc()}
