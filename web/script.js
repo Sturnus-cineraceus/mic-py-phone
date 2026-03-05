@@ -21,6 +21,134 @@ function scheduleLoadAudioDevices(){
 // 起動時に一度だけ実行
 scheduleLoadAudioDevices();
 
+// Setup gain control UI and bind to backend
+function setupGainControl(){
+  const gainEl = document.getElementById('gainRange');
+  const gainVal = document.getElementById('gainVal');
+  if(!gainEl || !gainVal) return;
+
+  const setUI = (v)=>{ gainEl.value = String(v); gainVal.textContent = `${v} dB`; };
+
+  // initialize from backend if available
+  (async ()=>{
+    try{
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_gain_db){
+        const resp = await window.pywebview.api.get_gain_db();
+        if(!resp.error && typeof resp.gain_db !== 'undefined'){
+          setUI(Number(resp.gain_db).toFixed(1));
+        }
+      }
+    }catch(e){ /* ignore */ }
+  })();
+
+  gainEl.oninput = async (e)=>{
+    const v = e.target.value;
+    gainVal.textContent = `${v} dB`;
+    try{
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.set_gain_db){
+        await window.pywebview.api.set_gain_db(v);
+      }
+    }catch(err){ /* ignore */ }
+  };
+}
+// also setup gain control once pywebview is ready
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    if(window.pywebview){
+      setupGainControl();
+    } else {
+      window.addEventListener('pywebviewready', setupGainControl);
+    }
+  });
+} else {
+  if(window.pywebview){
+    setupGainControl();
+  } else {
+    window.addEventListener('pywebviewready', setupGainControl);
+  }
+}
+
+// Setup noise gate UI and bind to backend
+function setupGateControl(){
+  const gateEnabled = document.getElementById('gateEnabled');
+  const gateRange = document.getElementById('gateRange');
+  const gateVal = document.getElementById('gateVal');
+  const gateAttack = document.getElementById('gateAttack');
+  const gateRelease = document.getElementById('gateRelease');
+  if(!gateEnabled || !gateRange || !gateVal) return;
+
+  const setUI = (s)=>{
+    gateEnabled.checked = !!s.enabled;
+    gateRange.value = String(s.threshold_db);
+    gateVal.textContent = `${s.threshold_db} dB`;
+    if(gateAttack) gateAttack.value = String(s.attack_ms);
+    if(gateRelease) gateRelease.value = String(s.release_ms);
+  };
+
+  (async ()=>{
+    try{
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_gate_settings){
+        const resp = await window.pywebview.api.get_gate_settings();
+        if(!resp.error){ setUI(resp); }
+      }
+    }catch(e){ /* ignore */ }
+  })();
+
+  gateEnabled.onchange = async (e)=>{
+    try{ await window.pywebview.api.set_gate_enabled(e.target.checked); }catch(err){ /* ignore */ }
+  };
+  gateRange.oninput = async (e)=>{
+    const v = e.target.value; gateVal.textContent = `${v} dB`;
+    try{ await window.pywebview.api.set_gate_threshold_db(v); }catch(err){ /* ignore */ }
+  };
+  if(gateAttack){ gateAttack.onchange = async (e)=>{ try{ await window.pywebview.api.set_gate_attack_ms(e.target.value); }catch(err){} }; }
+  if(gateRelease){ gateRelease.onchange = async (e)=>{ try{ await window.pywebview.api.set_gate_release_ms(e.target.value); }catch(err){} }; }
+}
+
+// initialize gate controls like gain controls
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    if(window.pywebview){ setupGateControl(); } else { window.addEventListener('pywebviewready', setupGateControl); }
+  });
+} else {
+  if(window.pywebview){ setupGateControl(); } else { window.addEventListener('pywebviewready', setupGateControl); }
+}
+
+// Setup HPF control UI and bind to backend
+function setupHPFControl(){
+  const hpfEnabled = document.getElementById('hpfEnabled');
+  const hpfCutoff = document.getElementById('hpfCutoff');
+  const hpfVal = document.getElementById('hpfVal');
+  if(!hpfEnabled || !hpfCutoff || !hpfVal) return;
+
+  const setUI = (s)=>{
+    hpfEnabled.checked = !!s.enabled;
+    hpfCutoff.value = String(s.cutoff_hz);
+    hpfVal.textContent = `${s.cutoff_hz} Hz`;
+  };
+
+  (async ()=>{
+    try{
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_hpf_settings){
+        const resp = await window.pywebview.api.get_hpf_settings();
+        if(!resp.error){ setUI(resp); }
+      }
+    }catch(e){ /* ignore */ }
+  })();
+
+  hpfEnabled.onchange = async (e)=>{ try{ await window.pywebview.api.set_hpf_enabled(e.target.checked); }catch(err){} };
+  hpfCutoff.oninput = async (e)=>{ const v = e.target.value; hpfVal.textContent = `${v} Hz`; try{ await window.pywebview.api.set_hpf_cutoff_hz(v); }catch(err){} };
+}
+
+// initialize HPF controls like others
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    if(window.pywebview){ setupHPFControl(); } else { window.addEventListener('pywebviewready', setupHPFControl); }
+  });
+} else {
+  if(window.pywebview){ setupHPFControl(); } else { window.addEventListener('pywebviewready', setupHPFControl); }
+}
+
 async function loadAudioDevices(){
   const statusEl = document.getElementById('status');
   statusEl.textContent = '状態: デバイス取得中...';
