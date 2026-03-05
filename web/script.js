@@ -1,6 +1,34 @@
 document.getElementById('startBtn').addEventListener('click', startBypass);
 document.getElementById('stopBtn').addEventListener('click', stopBypass);
 
+// Accordion toggle for audio console: collapsed by default
+function setupAudioAccordion(){
+  const toggle = document.getElementById('audioToggle');
+  const panel = document.getElementById('audioControls');
+  if(!toggle || !panel) return;
+  const setState = (expanded)=>{
+    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    if(expanded){ panel.removeAttribute('hidden'); toggle.textContent = '音声コンソール ▾'; }
+    else { panel.setAttribute('hidden',''); toggle.textContent = '音声コンソール ▸'; }
+  };
+  toggle.addEventListener('click', ()=>{ const expanded = toggle.getAttribute('aria-expanded') === 'true'; setState(!expanded); });
+  // initialize collapsed
+  setState(false);
+}
+
+function strengthLabel(percent){
+  const p = Number(percent);
+  if(p < 34) return `弱(${p}%)`;
+  if(p < 67) return `中(${p}%)`;
+  return `強(${p}%)`;
+}
+
+function toPercent01(v){
+  const n = Number(v);
+  if(Number.isNaN(n)) return 50;
+  return Math.max(0, Math.min(100, Math.round(n * 100)));
+}
+
 // 自動読み込み: 起動時にデバイス一覧を取得してプルダウンを埋める
 function scheduleLoadAudioDevices(){
   const runLoad = () => {
@@ -20,6 +48,13 @@ function scheduleLoadAudioDevices(){
 
 // 起動時に一度だけ実行
 scheduleLoadAudioDevices();
+
+// initialize audio console accordion on DOM ready
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', setupAudioAccordion);
+} else {
+  setupAudioAccordion();
+}
 
 // Setup gain control UI and bind to backend
 function setupGainControl(){
@@ -73,21 +108,21 @@ function setupGateControl(){
   const gateEnabled = document.getElementById('gateEnabled');
   const gateRange = document.getElementById('gateRange');
   const gateVal = document.getElementById('gateVal');
-  const gateAttack = document.getElementById('gateAttack');
-  const gateRelease = document.getElementById('gateRelease');
   if(!gateEnabled || !gateRange || !gateVal) return;
 
   const setUI = (s)=>{
     gateEnabled.checked = !!s.enabled;
-    gateRange.value = String(s.threshold_db);
-    gateVal.textContent = `${s.threshold_db} dB`;
-    if(gateAttack) gateAttack.value = String(s.attack_ms);
-    if(gateRelease) gateRelease.value = String(s.release_ms);
+    const p = toPercent01(s.strength ?? 0.5);
+    gateRange.value = String(p);
+    gateVal.textContent = strengthLabel(p);
   };
 
   (async ()=>{
     try{
-      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_gate_settings){
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_easy_settings){
+        const resp = await window.pywebview.api.get_easy_settings();
+        if(!resp.error && resp.gate){ setUI(resp.gate); }
+      } else if(window.pywebview && window.pywebview.api && window.pywebview.api.get_gate_settings){
         const resp = await window.pywebview.api.get_gate_settings();
         if(!resp.error){ setUI(resp); }
       }
@@ -98,11 +133,10 @@ function setupGateControl(){
     try{ await window.pywebview.api.set_gate_enabled(e.target.checked); }catch(err){ /* ignore */ }
   };
   gateRange.oninput = async (e)=>{
-    const v = e.target.value; gateVal.textContent = `${v} dB`;
-    try{ await window.pywebview.api.set_gate_threshold_db(v); }catch(err){ /* ignore */ }
+    const v = e.target.value;
+    gateVal.textContent = strengthLabel(v);
+    try{ await window.pywebview.api.set_gate_strength(v); }catch(err){ /* ignore */ }
   };
-  if(gateAttack){ gateAttack.onchange = async (e)=>{ try{ await window.pywebview.api.set_gate_attack_ms(e.target.value); }catch(err){} }; }
-  if(gateRelease){ gateRelease.onchange = async (e)=>{ try{ await window.pywebview.api.set_gate_release_ms(e.target.value); }catch(err){} }; }
 }
 
 // initialize gate controls like gain controls
@@ -123,21 +157,22 @@ function setupHPFControl(){
 
   const setUI = (s)=>{
     hpfEnabled.checked = !!s.enabled;
-    hpfCutoff.value = String(s.cutoff_hz);
-    hpfVal.textContent = `${s.cutoff_hz} Hz`;
+    const p = toPercent01(s.strength ?? 0.5);
+    hpfCutoff.value = String(p);
+    hpfVal.textContent = strengthLabel(p);
   };
 
   (async ()=>{
     try{
-      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_hpf_settings){
-        const resp = await window.pywebview.api.get_hpf_settings();
-        if(!resp.error){ setUI(resp); }
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_easy_settings){
+        const resp = await window.pywebview.api.get_easy_settings();
+        if(!resp.error && resp.hpf){ setUI(resp.hpf); }
       }
     }catch(e){ /* ignore */ }
   })();
 
   hpfEnabled.onchange = async (e)=>{ try{ await window.pywebview.api.set_hpf_enabled(e.target.checked); }catch(err){} };
-  hpfCutoff.oninput = async (e)=>{ const v = e.target.value; hpfVal.textContent = `${v} Hz`; try{ await window.pywebview.api.set_hpf_cutoff_hz(v); }catch(err){} };
+  hpfCutoff.oninput = async (e)=>{ const v = e.target.value; hpfVal.textContent = strengthLabel(v); try{ await window.pywebview.api.set_hpf_strength(v); }catch(err){} };
 }
 
 // initialize HPF controls like others
@@ -147,6 +182,135 @@ if(document.readyState === 'loading'){
   });
 } else {
   if(window.pywebview){ setupHPFControl(); } else { window.addEventListener('pywebviewready', setupHPFControl); }
+}
+
+// Setup Noise Reduction (noisereduce) UI and bind to backend
+function setupNRControl(){
+  const nrEnabled = document.getElementById('nrEnabled');
+  const nrStrength = document.getElementById('nrStrength');
+  const nrStrengthVal = document.getElementById('nrStrengthVal');
+  if(!nrEnabled) return;
+
+  const setUI = (s)=>{
+    nrEnabled.checked = !!s.enabled;
+    if(nrStrength && typeof s.strength !== 'undefined'){
+      const p = toPercent01(s.strength);
+      nrStrength.value = String(p);
+      if(nrStrengthVal) nrStrengthVal.textContent = strengthLabel(p);
+    }
+  };
+
+  (async ()=>{
+    try{
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_nr_settings){
+        const resp = await window.pywebview.api.get_nr_settings();
+        if(!resp.error){ setUI(resp); }
+      }
+    }catch(e){ /* ignore */ }
+  })();
+
+  nrEnabled.onchange = async (e)=>{ try{ await window.pywebview.api.set_nr_enabled(e.target.checked); }catch(err){} };
+  if(nrStrength){
+    nrStrength.oninput = async (e)=>{
+      const v = e.target.value;
+      if(nrStrengthVal) nrStrengthVal.textContent = strengthLabel(v);
+      try{ await window.pywebview.api.set_nr_strength(v); }catch(err){}
+    };
+  }
+}
+
+// initialize NR control
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    if(window.pywebview){ setupNRControl(); } else { window.addEventListener('pywebviewready', setupNRControl); }
+  });
+} else {
+  if(window.pywebview){ setupNRControl(); } else { window.addEventListener('pywebviewready', setupNRControl); }
+}
+
+// Setup compressor UI and bind to backend
+function setupCompressorControl(){
+  const compEnabled = document.getElementById('compEnabled');
+  const compRatio = document.getElementById('compRatio');
+  const compRatioVal = document.getElementById('compRatioVal');
+  if(!compEnabled || !compRatio) return;
+
+  const setUI = (s)=>{
+    compEnabled.checked = !!s.enabled;
+    const p = toPercent01(s.strength ?? 0.5);
+    compRatio.value = String(p);
+    if(compRatioVal) compRatioVal.textContent = strengthLabel(p);
+  };
+
+  (async ()=>{
+    try{
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_easy_settings){
+        const resp = await window.pywebview.api.get_easy_settings();
+        if(!resp.error && resp.compressor){ setUI(resp.compressor); }
+      }
+    }catch(e){ /* ignore */ }
+  })();
+
+  compEnabled.onchange = async (e)=>{ try{ await window.pywebview.api.set_compressor_enabled(e.target.checked); }catch(err){} };
+  compRatio.oninput = async (e)=>{
+    const v = e.target.value;
+    if(compRatioVal) compRatioVal.textContent = strengthLabel(v);
+    try{ await window.pywebview.api.set_compressor_strength(v); }catch(err){}
+  };
+}
+
+// initialize compressor control
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    if(window.pywebview){ setupCompressorControl(); } else { window.addEventListener('pywebviewready', setupCompressorControl); }
+  });
+} else {
+  if(window.pywebview){ setupCompressorControl(); } else { window.addEventListener('pywebviewready', setupCompressorControl); }
+}
+
+// Setup final noise adjustment (post-gain de-hiss) UI and bind to backend
+function setupFinalNoiseControl(){
+  const dehissEnabled = document.getElementById('dehissEnabled');
+  const dehissStrength = document.getElementById('dehissStrength');
+  const dehissVal = document.getElementById('dehissVal');
+  if(!dehissEnabled || !dehissStrength || !dehissVal) return;
+
+  const setUI = (s)=>{
+    dehissEnabled.checked = !!s.enabled;
+    const p = toPercent01(s.strength ?? 0.5);
+    dehissStrength.value = String(p);
+    dehissVal.textContent = strengthLabel(p);
+  };
+
+  (async ()=>{
+    try{
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_final_noise_settings){
+        const resp = await window.pywebview.api.get_final_noise_settings();
+        if(!resp.error){ setUI(resp); }
+      } else if(window.pywebview && window.pywebview.api && window.pywebview.api.get_easy_settings){
+        const resp = await window.pywebview.api.get_easy_settings();
+        if(!resp.error && resp.final_noise){ setUI(resp.final_noise); }
+      }
+    }catch(e){ /* ignore */ }
+  })();
+
+  dehissEnabled.onchange = async (e)=>{
+    try{ await window.pywebview.api.set_final_noise_enabled(e.target.checked); }catch(err){}
+  };
+  dehissStrength.oninput = async (e)=>{
+    const v = e.target.value;
+    dehissVal.textContent = strengthLabel(v);
+    try{ await window.pywebview.api.set_final_noise_strength(v); }catch(err){}
+  };
+}
+
+// initialize final noise adjustment control
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    if(window.pywebview){ setupFinalNoiseControl(); } else { window.addEventListener('pywebviewready', setupFinalNoiseControl); }
+  });
+} else {
+  if(window.pywebview){ setupFinalNoiseControl(); } else { window.addEventListener('pywebviewready', setupFinalNoiseControl); }
 }
 
 async function loadAudioDevices(){

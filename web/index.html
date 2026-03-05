@@ -17,25 +17,46 @@
       <p>選択した入力デバイスの音声を直接選択した出力デバイスへルーティングします。</p>
 
       <!-- 自動取得に移行したためボタンを削除しました -->
-      <div id="audioControls" style="margin-top:12px">
+      <div class="accordion" style="margin-top:12px">
+        <button id="audioToggle" class="accordion-header" aria-expanded="false" aria-controls="audioControls">音声コンソール ▸</button>
+        <div id="audioControls" class="accordion-panel" hidden>
         <label style="display:block; margin-bottom:6px">マイク（入力）: <select id="inputSelect"></select></label>
         <label style="display:block; margin-bottom:6px">スピーカー（出力）: <select id="outputSelect"></select></label>
         <label style="display:block; margin-top:8px">ゲイン: <span id="gainVal">0 dB</span></label>
         <input id="gainRange" type="range" min="-30" max="30" step="0.5" value="0" style="width:100%">
         <div style="margin-top:8px">
-          <label style="display:inline-block; margin-right:8px"><input type="checkbox" id="gateEnabled"> ノイズゲートを有効にする</label>
+          <label style="display:inline-block; margin-right:8px"><input type="checkbox" id="gateEnabled"> ノイズカット(ゲート) ON</label>
           <div style="margin-top:6px">
-            <label style="display:block; margin-bottom:4px">閾値: <span id="gateVal">-40 dB</span></label>
-            <input id="gateRange" type="range" min="-80" max="-10" step="0.5" value="-40" style="width:100%">
+            <label style="display:block; margin-bottom:4px">強さ: <span id="gateVal">中(50%)</span></label>
+            <input id="gateRange" type="range" min="0" max="100" step="1" value="50" style="width:100%">
           </div>
-          <div style="margin-top:6px; font-size:0.9em; color:#666">アタック/リリース(ms): <input id="gateAttack" type="number" value="10" style="width:70px"> / <input id="gateRelease" type="number" value="100" style="width:70px"></div>
         </div>
         <div style="margin-top:10px; border-top:1px solid #eee; padding-top:8px">
-          <label style="display:inline-block; margin-right:8px"><input type="checkbox" id="hpfEnabled"> ハイパスフィルタを有効にする</label>
+          <label style="display:inline-block; margin-right:8px"><input type="checkbox" id="hpfEnabled"> 低音ノイズカット ON</label>
+          <label style="display:inline-block; margin-left:12px"><input type="checkbox" id="nrEnabled"> ノイズリダクション ON</label>
           <div style="margin-top:6px">
-            <label style="display:block; margin-bottom:4px">カットオフ: <span id="hpfVal">80 Hz</span></label>
-            <input id="hpfCutoff" type="range" min="20" max="2000" step="1" value="80" style="width:100%">
+            <label style="display:block; margin-bottom:4px">ノイズリダクション強さ: <span id="nrStrengthVal">中(50%)</span></label>
+            <input id="nrStrength" type="range" min="0" max="100" step="1" value="50" style="width:100%">
           </div>
+          <div style="margin-top:6px">
+            <label style="display:block; margin-bottom:4px">低音ノイズカット強さ: <span id="hpfVal">中(50%)</span></label>
+            <input id="hpfCutoff" type="range" min="0" max="100" step="1" value="50" style="width:100%">
+          </div>
+        </div>
+        <div style="margin-top:10px; border-top:1px solid #eee; padding-top:8px">
+          <label style="display:inline-block; margin-right:8px"><input type="checkbox" id="compEnabled"> 声の聞き取り補正(コンプレッサー) ON</label>
+          <div style="margin-top:6px">
+            <label style="display:block; margin-bottom:4px">補正強さ: <span id="compRatioVal">中(50%)</span></label>
+            <input id="compRatio" type="range" min="0" max="100" step="1" value="50" style="width:100%">
+          </div>
+        </div>
+        <div style="margin-top:10px; border-top:1px solid #eee; padding-top:8px">
+          <label style="display:inline-block; margin-right:8px"><input type="checkbox" id="dehissEnabled"> 最終ノイズ調整 ON</label>
+          <div style="margin-top:6px">
+            <label style="display:block; margin-bottom:4px">最終ノイズ調整の強さ: <span id="dehissVal">中(50%)</span></label>
+            <input id="dehissStrength" type="range" min="0" max="100" step="1" value="50" style="width:100%">
+          </div>
+        </div>
         </div>
       </div>
       <div style="margin-top:12px">

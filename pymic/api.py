@@ -1,11 +1,40 @@
 import traceback
 import math
+import importlib
 import numpy as np
 
 try:
     import sounddevice as sd
 except Exception:
     sd = None
+try:
+    import noisereduce as nr
+except Exception:
+    nr = None
+try:
+    _pedalboard_mod = importlib.import_module("pedalboard._pedalboard")
+    Pedalboard = getattr(_pedalboard_mod, "Pedalboard", None)
+    PBNoiseGate = getattr(_pedalboard_mod, "NoiseGate", None)
+    PBCompressor = getattr(_pedalboard_mod, "Compressor", None)
+    PBHighpassFilter = getattr(_pedalboard_mod, "HighpassFilter", None)
+except Exception:
+    try:
+        _pedalboard_mod = importlib.import_module("pedalboard")
+        Pedalboard = getattr(_pedalboard_mod, "Pedalboard", None)
+        PBNoiseGate = getattr(_pedalboard_mod, "NoiseGate", None)
+        PBCompressor = getattr(_pedalboard_mod, "Compressor", None)
+        PBHighpassFilter = getattr(_pedalboard_mod, "HighpassFilter", None)
+    except Exception:
+        _pedalboard_mod = None
+        Pedalboard = None
+        PBNoiseGate = None
+        PBCompressor = None
+        PBHighpassFilter = None
+
+HAS_PEDALBOARD = all(
+    x is not None
+    for x in (Pedalboard, PBNoiseGate, PBCompressor, PBHighpassFilter)
+)
 
 
 class Api:
@@ -25,6 +54,67 @@ class Api:
         # High-pass filter settings
         self.hpf_enabled = False
         self.hpf_cutoff_hz = 80.0
+        # Noise reduction (noisereduce) settings
+        self.nr_enabled = False
+        self.nr_strength = 0.9
+        # Compressor settings
+        self.comp_enabled = False
+        self.comp_threshold_db = -24.0
+        self.comp_ratio = 4.0
+        self.comp_attack_ms = 10.0
+        self.comp_release_ms = 120.0
+        self.comp_makeup_db = 0.0
+        # Post-gain de-hiss (white noise suppression) settings
+        self.dehiss_enabled = True
+        self.dehiss_lpf_hz = 9000.0
+        self.dehiss_threshold_db = -58.0
+        self.dehiss_strength = 0.65
+
+    def _to_strength01(self, value):
+        try:
+            v = float(value)
+            if v > 1.0:
+                v = v / 100.0
+            return max(0.0, min(1.0, v))
+        except Exception:
+            return 0.5
+
+    def _get_gate_strength(self):
+        return max(0.0, min(1.0, (float(self.gate_threshold_db) + 70.0) / 45.0))
+
+    def _get_hpf_strength(self):
+        return max(0.0, min(1.0, (float(self.hpf_cutoff_hz) - 50.0) / 150.0))
+
+    def _get_comp_strength(self):
+        return max(0.0, min(1.0, (float(self.comp_ratio) - 2.0) / 6.0))
+
+    def get_easy_settings(self):
+        try:
+            return {
+                "engine": "pedalboard" if Pedalboard is not None else "native",
+                "nr": {
+                    "enabled": bool(self.nr_enabled),
+                    "strength": float(self.nr_strength),
+                },
+                "gate": {
+                    "enabled": bool(self.gate_enabled),
+                    "strength": float(self._get_gate_strength()),
+                },
+                "hpf": {
+                    "enabled": bool(self.hpf_enabled),
+                    "strength": float(self._get_hpf_strength()),
+                },
+                "compressor": {
+                    "enabled": bool(self.comp_enabled),
+                    "strength": float(self._get_comp_strength()),
+                },
+                "final_noise": {
+                    "enabled": bool(self.dehiss_enabled),
+                    "strength": float(self.dehiss_strength),
+                },
+            }
+        except Exception as e:
+            return {"error": str(e)}
 
     def get_audio_devices(self):
         if sd is None:
@@ -69,7 +159,11 @@ class Api:
 
             # Filter to WASAPI host APIs only (case-insensitive). If none are present,
             # return an error because the UI should allow selection only for WASAPI.
-            wasapi_list = [h for h in hostapi_list if isinstance(h.get("name"), str) and "WASAPI" in h.get("name").upper()]
+            wasapi_list = [
+                h
+                for h in hostapi_list
+                if isinstance(h.get("name"), str) and "WASAPI" in h.get("name").upper()
+            ]
             if not wasapi_list:
                 return {"error": "WASAPI host API not available on this system"}
 
@@ -167,12 +261,169 @@ class Api:
         except Exception as e:
             return {"error": "invalid value", "detail": str(e)}
 
+    def set_gate_strength(self, strength):
+        try:
+            s = self._to_strength01(strength)
+            self.gate_threshold_db = -70.0 + (45.0 * s)
+            self.gate_attack_ms = 8.0
+            self.gate_release_ms = 120.0
+            return {
+                "strength": s,
+                "threshold_db": self.gate_threshold_db,
+            }
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
     # High-pass filter API
     def get_hpf_settings(self):
         try:
-            return {"enabled": bool(self.hpf_enabled), "cutoff_hz": float(self.hpf_cutoff_hz)}
+            return {
+                "enabled": bool(self.hpf_enabled),
+                "cutoff_hz": float(self.hpf_cutoff_hz),
+            }
         except Exception as e:
             return {"error": str(e)}
+
+    # Noise reduction (noisereduce) API
+    def get_nr_settings(self):
+        try:
+            return {
+                "enabled": bool(self.nr_enabled),
+                "strength": float(self.nr_strength),
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def set_nr_enabled(self, enabled):
+        try:
+            self.nr_enabled = bool(enabled)
+            return {"enabled": self.nr_enabled}
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    def set_nr_strength(self, strength):
+        try:
+            s = self._to_strength01(strength)
+            self.nr_strength = s
+            return {"strength": self.nr_strength}
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    # Final noise adjustment (post-gain de-hiss) API
+    def get_final_noise_settings(self):
+        try:
+            return {
+                "enabled": bool(self.dehiss_enabled),
+                "strength": float(self.dehiss_strength),
+                "threshold_db": float(self.dehiss_threshold_db),
+                "lpf_hz": float(self.dehiss_lpf_hz),
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def set_final_noise_enabled(self, enabled):
+        try:
+            self.dehiss_enabled = bool(enabled)
+            return {"enabled": self.dehiss_enabled}
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    def set_final_noise_strength(self, strength):
+        try:
+            s = self._to_strength01(strength)
+            self.dehiss_strength = s
+            # stronger setting: slightly higher threshold and lower LPF cutoff
+            self.dehiss_threshold_db = -64.0 + (16.0 * s)
+            self.dehiss_lpf_hz = 12000.0 - (5000.0 * s)
+            return {
+                "strength": self.dehiss_strength,
+                "threshold_db": self.dehiss_threshold_db,
+                "lpf_hz": self.dehiss_lpf_hz,
+            }
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    # Compressor API
+    def get_compressor_settings(self):
+        try:
+            return {
+                "enabled": bool(self.comp_enabled),
+                "threshold_db": float(self.comp_threshold_db),
+                "ratio": float(self.comp_ratio),
+                "attack_ms": float(self.comp_attack_ms),
+                "release_ms": float(self.comp_release_ms),
+                "makeup_db": float(self.comp_makeup_db),
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def set_compressor_enabled(self, enabled):
+        try:
+            self.comp_enabled = bool(enabled)
+            return {"enabled": self.comp_enabled}
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    def set_compressor_threshold_db(self, db):
+        try:
+            self.comp_threshold_db = float(db)
+            return {"threshold_db": self.comp_threshold_db}
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    def set_compressor_ratio(self, ratio):
+        try:
+            r = float(ratio)
+            if r < 1.0:
+                return {"error": "ratio must be >= 1.0"}
+            self.comp_ratio = r
+            return {"ratio": self.comp_ratio}
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    def set_compressor_attack_ms(self, ms):
+        try:
+            m = float(ms)
+            if m <= 0:
+                return {"error": "attack must be > 0"}
+            self.comp_attack_ms = m
+            return {"attack_ms": self.comp_attack_ms}
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    def set_compressor_release_ms(self, ms):
+        try:
+            m = float(ms)
+            if m <= 0:
+                return {"error": "release must be > 0"}
+            self.comp_release_ms = m
+            return {"release_ms": self.comp_release_ms}
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    def set_compressor_makeup_db(self, db):
+        try:
+            self.comp_makeup_db = float(db)
+            return {"makeup_db": self.comp_makeup_db}
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    def set_compressor_strength(self, strength):
+        try:
+            s = self._to_strength01(strength)
+            self.comp_ratio = 2.0 + (6.0 * s)
+            self.comp_threshold_db = -12.0 - (20.0 * s)
+            self.comp_attack_ms = 8.0
+            self.comp_release_ms = 120.0
+            self.comp_makeup_db = 0.0 + (4.0 * s)
+            return {
+                "strength": s,
+                "ratio": self.comp_ratio,
+                "threshold_db": self.comp_threshold_db,
+                "makeup_db": self.comp_makeup_db,
+            }
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
 
     def set_hpf_enabled(self, enabled):
         try:
@@ -188,6 +439,17 @@ class Api:
                 return {"error": "cutoff must be > 0"}
             self.hpf_cutoff_hz = hzf
             return {"cutoff_hz": self.hpf_cutoff_hz}
+        except Exception as e:
+            return {"error": "invalid value", "detail": str(e)}
+
+    def set_hpf_strength(self, strength):
+        try:
+            s = self._to_strength01(strength)
+            self.hpf_cutoff_hz = 50.0 + (150.0 * s)
+            return {
+                "strength": s,
+                "cutoff_hz": self.hpf_cutoff_hz,
+            }
         except Exception as e:
             return {"error": "invalid value", "detail": str(e)}
 
@@ -222,31 +484,45 @@ class Api:
                 # buf: 1-d ndarray
                 # target_dtype: numpy dtype to cast final result into
                 # Work in float32 normalized range to avoid repeated integer quantization loss.
-                if np.issubdtype(buf.dtype, np.integer) or np.issubdtype(target_dtype, np.integer):
+                if np.issubdtype(buf.dtype, np.integer) or np.issubdtype(
+                    target_dtype, np.integer
+                ):
                     # Determine integer target bounds
-                    tgt_info = np.iinfo(target_dtype) if np.issubdtype(target_dtype, np.integer) else np.iinfo(buf.dtype)
+                    tgt_info = (
+                        np.iinfo(target_dtype)
+                        if np.issubdtype(target_dtype, np.integer)
+                        else np.iinfo(buf.dtype)
+                    )
                     denom = float(max(abs(tgt_info.min), abs(tgt_info.max)))
                     f = buf.astype(np.float32) / denom
-                    f *= float(self.volume)
                     f = np.clip(f, -1.0, 1.0 - (1.0 / denom))
                     return np.rint(f * denom).astype(target_dtype)
                 else:
                     # float path, assume -1.0..1.0 range
-                    f = buf.astype(np.float32) * float(self.volume)
+                    f = buf.astype(np.float32)
                     f = np.clip(f, -1.0, 1.0)
                     return f.astype(target_dtype)
+
             # prepare gate smoothing coefficients (used in closure)
-            gate_enabled = bool(self.gate_enabled)
-            gate_threshold_db = float(self.gate_threshold_db)
             gate_attack_ms = float(self.gate_attack_ms)
             gate_release_ms = float(self.gate_release_ms)
             # compute per-sample smoothing alphas
-            alpha_attack = math.exp(-1.0 / (max(samplerate * (gate_attack_ms / 1000.0), 1.0)))
-            alpha_release = math.exp(-1.0 / (max(samplerate * (gate_release_ms / 1000.0), 1.0)))
+            alpha_attack = math.exp(
+                -1.0 / (max(samplerate * (gate_attack_ms / 1000.0), 1.0))
+            )
+            alpha_release = math.exp(
+                -1.0 / (max(samplerate * (gate_release_ms / 1000.0), 1.0))
+            )
+            gate_attack_prev = gate_attack_ms
+            gate_release_prev = gate_release_ms
 
             # envelope and gain state for closure
             env = 0.0
             gain_sm = 1.0
+
+            # compressor envelope/gain state
+            comp_env = 0.0
+            comp_gain_sm = 1.0
 
             # HPF state: we'll implement a biquad HPF with per-channel state and allow runtime coefficient updates
             hpf_enabled = False
@@ -259,13 +535,63 @@ class Api:
             hpf_y1 = np.zeros(channels, dtype=np.float32)
             hpf_y2 = np.zeros(channels, dtype=np.float32)
 
+            # Post-gain de-hiss state: one-pole LPF + downward expander
+            dehiss_lp_prev = np.zeros(channels, dtype=np.float32)
+            dehiss_env = 0.0
+            dehiss_gain_sm = 1.0
+
+            # helper to ensure HPF state arrays are numpy arrays with required length
+            def _ensure_hpf_state():
+                nonlocal hpf_x1, hpf_x2, hpf_y1, hpf_y2
+                try:
+                    if not isinstance(hpf_x1, np.ndarray):
+                        hpf_x1 = np.asarray(hpf_x1, dtype=np.float32)
+                    if not isinstance(hpf_x2, np.ndarray):
+                        hpf_x2 = np.asarray(hpf_x2, dtype=np.float32)
+                    if not isinstance(hpf_y1, np.ndarray):
+                        hpf_y1 = np.asarray(hpf_y1, dtype=np.float32)
+                    if not isinstance(hpf_y2, np.ndarray):
+                        hpf_y2 = np.asarray(hpf_y2, dtype=np.float32)
+
+                    req = int(max(1, channels))
+                    if hpf_x1.shape[0] < req:
+                        hpf_x1 = np.pad(hpf_x1, (0, req - hpf_x1.shape[0]))
+                    if hpf_x2.shape[0] < req:
+                        hpf_x2 = np.pad(hpf_x2, (0, req - hpf_x2.shape[0]))
+                    if hpf_y1.shape[0] < req:
+                        hpf_y1 = np.pad(hpf_y1, (0, req - hpf_y1.shape[0]))
+                    if hpf_y2.shape[0] < req:
+                        hpf_y2 = np.pad(hpf_y2, (0, req - hpf_y2.shape[0]))
+                except Exception:
+                    hpf_x1 = np.zeros(channels, dtype=np.float32)
+                    hpf_x2 = np.zeros(channels, dtype=np.float32)
+                    hpf_y1 = np.zeros(channels, dtype=np.float32)
+                    hpf_y2 = np.zeros(channels, dtype=np.float32)
+
+            def _ensure_dehiss_state():
+                nonlocal dehiss_lp_prev
+                try:
+                    if not isinstance(dehiss_lp_prev, np.ndarray):
+                        dehiss_lp_prev = np.asarray(dehiss_lp_prev, dtype=np.float32)
+                    req = int(max(1, channels))
+                    if dehiss_lp_prev.shape[0] < req:
+                        dehiss_lp_prev = np.pad(
+                            dehiss_lp_prev, (0, req - dehiss_lp_prev.shape[0])
+                        )
+                except Exception:
+                    dehiss_lp_prev = np.zeros(channels, dtype=np.float32)
+
             def callback(indata, outdata, frames, time, status):
                 nonlocal hpf_enabled, hpf_cutoff_prev, b0, b1, b2, a1, a2
+                nonlocal hpf_x1, hpf_x2, hpf_y1, hpf_y2
+                nonlocal alpha_attack, alpha_release, gate_attack_prev, gate_release_prev
+                nonlocal comp_env, comp_gain_sm
+                nonlocal dehiss_lp_prev, dehiss_env, dehiss_gain_sm
                 if status:
                     # ignore status, don't raise inside audio callback
                     pass
                 try:
-                    # normalize input to -1..1 float32
+                    # normalize input to -1..1 float32 and ensure 2D shape (frames, channels)
                     if np.issubdtype(indata.dtype, np.integer):
                         info = np.iinfo(indata.dtype)
                         denom = float(max(abs(info.min), abs(info.max)))
@@ -273,14 +599,153 @@ class Api:
                     else:
                         fdata = indata.astype(np.float32)
 
-                    # ensure 2D shape (frames, channels)
+                    # Ensure fdata is a numpy array and 2D (frames, channels)
+                    fdata = np.asarray(fdata)
                     if fdata.ndim == 1:
                         fdata = fdata.reshape(-1, 1)
+
+                    # Apply noise reduction if enabled and available.
+                    # Use per-channel stationary spectral gating which works well for white noise.
+                    try:
+                        if bool(self.nr_enabled) and nr is not None and fdata.size > 0:
+                            prop_decrease = float(max(0.0, min(1.0, self.nr_strength)))
+                            nch = fdata.shape[1]
+                            if nch == 1:
+                                # reduce_noise expects 1D
+                                out_nr = nr.reduce_noise(
+                                    y=fdata[:, 0],
+                                    sr=samplerate,
+                                    stationary=True,
+                                    prop_decrease=prop_decrease,
+                                )
+                                fdata = np.asarray(out_nr).reshape(-1, 1)
+                            else:
+                                # process each channel separately to avoid mixing
+                                out_nr = np.empty_like(fdata)
+                                for ch in range(nch):
+                                    out_nr[:, ch] = nr.reduce_noise(
+                                        y=fdata[:, ch],
+                                        sr=samplerate,
+                                        stationary=True,
+                                        prop_decrease=prop_decrease,
+                                    )
+                                fdata = out_nr
+                    except Exception:
+                        # keep original data if noise reduction fails
+                        pass
+
+                    use_pedalboard = (
+                        HAS_PEDALBOARD
+                        and (
+                            bool(self.hpf_enabled)
+                            or bool(self.gate_enabled)
+                            or bool(self.comp_enabled)
+                        )
+                    )
+
+                    if use_pedalboard and fdata.size > 0:
+                        assert Pedalboard is not None
+                        assert PBHighpassFilter is not None
+                        assert PBNoiseGate is not None
+                        assert PBCompressor is not None
+                        plugins = []
+                        if bool(self.hpf_enabled):
+                            plugins.append(
+                                PBHighpassFilter(
+                                    cutoff_frequency_hz=float(self.hpf_cutoff_hz)
+                                )
+                            )
+                        if bool(self.gate_enabled):
+                            plugins.append(
+                                PBNoiseGate(
+                                    threshold_db=float(self.gate_threshold_db),
+                                    ratio=10.0,
+                                    attack_ms=float(self.gate_attack_ms),
+                                    release_ms=float(self.gate_release_ms),
+                                )
+                            )
+                        if bool(self.comp_enabled):
+                            plugins.append(
+                                PBCompressor(
+                                    threshold_db=float(self.comp_threshold_db),
+                                    ratio=float(self.comp_ratio),
+                                    attack_ms=float(self.comp_attack_ms),
+                                    release_ms=float(self.comp_release_ms),
+                                )
+                            )
+
+                        if plugins:
+                            board = Pedalboard(plugins)
+                            pb_in = np.ascontiguousarray(fdata.T.astype(np.float32))
+                            pb_out = board(pb_in, samplerate)
+                            pb_out = np.asarray(pb_out, dtype=np.float32)
+                            fdata = pb_out.T
+                            if bool(self.comp_enabled) and float(self.comp_makeup_db) != 0.0:
+                                fdata = fdata * float(
+                                    10.0 ** (float(self.comp_makeup_db) / 20.0)
+                                )
+
+                    # apply compressor (with soft-knee curve and smoothed gain)
+                    if (not use_pedalboard) and bool(self.comp_enabled) and fdata.size > 0:
+                        thr = float(self.comp_threshold_db)
+                        ratio = max(1.0, float(self.comp_ratio))
+                        attack_ms = max(0.1, float(self.comp_attack_ms))
+                        release_ms = max(1.0, float(self.comp_release_ms))
+                        makeup = float(10.0 ** (float(self.comp_makeup_db) / 20.0))
+
+                        alpha_comp_attack = math.exp(
+                            -1.0 / (max(samplerate * (attack_ms / 1000.0), 1.0))
+                        )
+                        alpha_comp_release = math.exp(
+                            -1.0 / (max(samplerate * (release_ms / 1000.0), 1.0))
+                        )
+
+                        knee_db = 6.0
+
+                        def _compress_db(x_db, threshold_db, ratio_v, knee_v):
+                            if knee_v <= 0.0:
+                                if x_db <= threshold_db:
+                                    return x_db
+                                return threshold_db + (x_db - threshold_db) / ratio_v
+                            if (2.0 * (x_db - threshold_db)) < -knee_v:
+                                return x_db
+                            if abs(2.0 * (x_db - threshold_db)) <= knee_v:
+                                return x_db + ((1.0 / ratio_v - 1.0) * ((x_db - threshold_db + knee_v / 2.0) ** 2) / (2.0 * knee_v))
+                            return threshold_db + (x_db - threshold_db) / ratio_v
+
+                        out_comp = np.empty_like(fdata)
+                        for i in range(fdata.shape[0]):
+                            s = fdata[i, :]
+                            level = float(np.sqrt(np.mean(np.square(s.astype(np.float64)))))
+                            if level > comp_env:
+                                comp_env = alpha_comp_attack * comp_env + (1.0 - alpha_comp_attack) * level
+                            else:
+                                comp_env = alpha_comp_release * comp_env + (1.0 - alpha_comp_release) * level
+
+                            in_db = 20.0 * math.log10(comp_env + 1e-12)
+                            out_db = _compress_db(in_db, thr, ratio, knee_db)
+                            gain_db = out_db - in_db
+                            target_gain = float(10.0 ** (gain_db / 20.0))
+
+                            if target_gain < comp_gain_sm:
+                                alpha_g = alpha_comp_attack
+                            else:
+                                alpha_g = alpha_comp_release
+                            comp_gain_sm = alpha_g * comp_gain_sm + (1.0 - alpha_g) * target_gain
+
+                            out_comp[i, :] = s * comp_gain_sm * makeup
+
+                        fdata = out_comp
+
+                    # Ensure HPF state arrays are ready
+                    _ensure_hpf_state()
 
                     # apply HPF per-sample if enabled (biquad). Recompute coeffs if cutoff changed.
                     cur_hpf_enabled = bool(self.hpf_enabled)
                     cur_cutoff = float(self.hpf_cutoff_hz)
-                    if cur_hpf_enabled and (not hpf_enabled or hpf_cutoff_prev != cur_cutoff):
+                    if (not use_pedalboard) and cur_hpf_enabled and (
+                        not hpf_enabled or hpf_cutoff_prev != cur_cutoff
+                    ):
                         # compute biquad HPF coefficients (RBJ cookbook), Q=0.707
                         fs = float(samplerate)
                         f0 = max(1.0, min(cur_cutoff, fs / 2.0 - 1.0))
@@ -302,17 +767,23 @@ class Api:
                         a2 = a2_raw / a0_raw
                         hpf_enabled = True
                         hpf_cutoff_prev = cur_cutoff
-                    elif not cur_hpf_enabled:
+                    elif (not use_pedalboard) and (not cur_hpf_enabled):
                         hpf_enabled = False
 
-                    if hpf_enabled:
+                    if (not use_pedalboard) and hpf_enabled:
                         nch = min(fdata.shape[1], channels)
                         out_f = np.empty_like(fdata)
                         # per-sample per-channel biquad
                         for i in range(fdata.shape[0]):
                             for ch in range(nch):
                                 x = float(fdata[i, ch])
-                                y = b0 * x + b1 * hpf_x1[ch] + b2 * hpf_x2[ch] - a1 * hpf_y1[ch] - a2 * hpf_y2[ch]
+                                y = (
+                                    b0 * x
+                                    + b1 * hpf_x1[ch]
+                                    + b2 * hpf_x2[ch]
+                                    - a1 * hpf_y1[ch]
+                                    - a2 * hpf_y2[ch]
+                                )
                                 out_f[i, ch] = y
                                 hpf_x2[ch] = hpf_x1[ch]
                                 hpf_x1[ch] = x
@@ -323,13 +794,41 @@ class Api:
                         fdata = out_f
 
                     # apply noise gate decision based on RMS envelope (soft knee + smoothed gain)
-                    if bool(self.gate_enabled):
+                    if (not use_pedalboard) and bool(self.gate_enabled):
                         nonlocal env, gain_sm
+                        cur_gate_attack_ms = max(0.1, float(self.gate_attack_ms))
+                        cur_gate_release_ms = max(1.0, float(self.gate_release_ms))
+                        if (
+                            cur_gate_attack_ms != gate_attack_prev
+                            or cur_gate_release_ms != gate_release_prev
+                        ):
+                            alpha_attack = math.exp(
+                                -1.0
+                                / (
+                                    max(
+                                        samplerate * (cur_gate_attack_ms / 1000.0),
+                                        1.0,
+                                    )
+                                )
+                            )
+                            alpha_release = math.exp(
+                                -1.0
+                                / (
+                                    max(
+                                        samplerate * (cur_gate_release_ms / 1000.0),
+                                        1.0,
+                                    )
+                                )
+                            )
+                            gate_attack_prev = cur_gate_attack_ms
+                            gate_release_prev = cur_gate_release_ms
                         # compute RMS across channels
                         if fdata.size == 0:
                             rms = 0.0
                         else:
-                            rms = float(np.sqrt(np.mean(np.square(fdata.astype(np.float64)))))
+                            rms = float(
+                                np.sqrt(np.mean(np.square(fdata.astype(np.float64))))
+                            )
                         # update envelope smoothing
                         if rms > env:
                             env = alpha_attack * env + (1.0 - alpha_attack) * rms
@@ -358,6 +857,64 @@ class Api:
                             outdata.fill(0)
                             return
                         fdata = fdata * float(gain_sm)
+
+                    # post stage: explicit gain then de-hiss to reduce amplified white noise
+                    if fdata.size > 0:
+                        fdata = fdata * float(self.volume)
+                        fdata = np.clip(fdata, -1.0, 1.0)
+
+                    if bool(self.dehiss_enabled) and fdata.size > 0:
+                        _ensure_dehiss_state()
+                        fs = float(samplerate)
+                        cutoff = max(500.0, min(float(self.dehiss_lpf_hz), fs / 2.0 - 50.0))
+                        alpha_lp = 1.0 - math.exp(-2.0 * math.pi * cutoff / fs)
+                        nch = min(fdata.shape[1], channels)
+
+                        # one-pole low-pass to tame hiss-heavy upper band
+                        for i in range(fdata.shape[0]):
+                            for ch in range(nch):
+                                x = float(fdata[i, ch])
+                                prev = float(dehiss_lp_prev[ch])
+                                y = prev + alpha_lp * (x - prev)
+                                dehiss_lp_prev[ch] = y
+                                fdata[i, ch] = y
+
+                        # downward expander when level is near noise floor
+                        rms_post = float(np.sqrt(np.mean(np.square(fdata.astype(np.float64)))))
+                        alpha_env_attack = math.exp(-1.0 / (max(fs * (8.0 / 1000.0), 1.0)))
+                        alpha_env_release = math.exp(-1.0 / (max(fs * (140.0 / 1000.0), 1.0)))
+                        if rms_post > dehiss_env:
+                            dehiss_env = (
+                                alpha_env_attack * dehiss_env
+                                + (1.0 - alpha_env_attack) * rms_post
+                            )
+                        else:
+                            dehiss_env = (
+                                alpha_env_release * dehiss_env
+                                + (1.0 - alpha_env_release) * rms_post
+                            )
+
+                        thr_lin = float(10.0 ** (float(self.dehiss_threshold_db) / 20.0))
+                        strength = max(0.0, min(1.0, float(self.dehiss_strength)))
+                        if dehiss_env >= thr_lin:
+                            target_post_gain = 1.0
+                        else:
+                            rel = dehiss_env / max(thr_lin, 1e-9)
+                            floor_gain = max(0.15, 1.0 - 0.9 * strength)
+                            target_post_gain = floor_gain + (1.0 - floor_gain) * rel
+                            target_post_gain = max(floor_gain, min(1.0, target_post_gain))
+
+                        alpha_post_open = math.exp(-1.0 / (max(fs * (8.0 / 1000.0), 1.0)))
+                        alpha_post_close = math.exp(-1.0 / (max(fs * (220.0 / 1000.0), 1.0)))
+                        if target_post_gain > dehiss_gain_sm:
+                            alpha_pg = alpha_post_open
+                        else:
+                            alpha_pg = alpha_post_close
+                        dehiss_gain_sm = (
+                            alpha_pg * dehiss_gain_sm
+                            + (1.0 - alpha_pg) * target_post_gain
+                        )
+                        fdata = fdata * float(dehiss_gain_sm)
 
                     # write to outdata, scaling per channel
                     if fdata.shape[1] == 1 and outdata.shape[1] > 1:

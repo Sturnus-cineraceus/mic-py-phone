@@ -29,3 +29,24 @@ body.dark{
   --text:#e6eef8;
   --accent:#4f46e5;
 }
+
+/* Accordion (audio console) */
+.accordion{margin-top:8px}
+.accordion-header{
+  width:100%;
+  text-align:left;
+  background:transparent;
+  border:1px solid #e6eef8;
+  padding:8px 12px;
+  border-radius:8px;
+  font-weight:600;
+  cursor:pointer;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.accordion-header:hover{background:rgba(0,0,0,0.02)}
+.accordion-panel{margin-top:10px; transition:all 200ms ease;}
+.accordion-header:focus{outline:2px solid rgba(37,99,235,0.2)}
+
+body.dark .accordion-header{border-color:rgba(255,255,255,0.06)}
