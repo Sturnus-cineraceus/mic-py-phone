@@ -597,6 +597,44 @@ async function refreshAllControls(){
   }catch(e){ /* ignore refresh errors */ }
 }
 
+// Level meters: poll backend for recent RMS levels and update bars
+function setupLevelMeters(){
+  const inBar = document.getElementById('inputLevelBar');
+  const outBar = document.getElementById('outputLevelBar');
+  if(!inBar || !outBar) return;
+
+  const update = async ()=>{
+    try{
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_levels){
+        const resp = await window.pywebview.api.get_levels();
+        if(!resp.error){
+          // convert dB (resp.input_db) to 0..100% for UI. -60dB -> 0%, 0dB -> 100%
+          const mapDbToPct = (db)=>{
+            const v = Number(db);
+            if(Number.isNaN(v)) return 0;
+            const pct = Math.max(0, Math.min(100, Math.round((v + 60) * (100/60))));
+            return pct;
+          };
+          const inPct = mapDbToPct(resp.input_db);
+          const outPct = mapDbToPct(resp.output_db);
+          inBar.style.width = `${inPct}%`;
+          outBar.style.width = `${outPct}%`;
+        }
+      }
+    }catch(e){ /* ignore */ }
+  };
+
+  // run regularly
+  setInterval(update, 150);
+}
+
+// init meters when ready
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>{ if(window.pywebview){ setupLevelMeters(); } else { window.addEventListener('pywebviewready', setupLevelMeters); } });
+} else {
+  if(window.pywebview){ setupLevelMeters(); } else { window.addEventListener('pywebviewready', setupLevelMeters); }
+}
+
 async function saveSettings(){
   try{
     const resp = await window.pywebview.api.save_settings();

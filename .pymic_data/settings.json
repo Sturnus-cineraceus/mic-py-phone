@@ -1,5 +1,5 @@
 {
-  "gain_db": 0.0,
+  "gain_db": 2.0000000000000004,
   "input_device": 12,
   "output_device": 10,
   "gate": {
@@ -9,25 +9,25 @@
     "release_ms": 120.0
   },
   "hpf": {
-    "enabled": false,
-    "cutoff_hz": 80.0
+    "enabled": true,
+    "cutoff_hz": 180.5
   },
   "nr": {
-    "enabled": false,
-    "strength": 0.9
+    "enabled": true,
+    "strength": 0.93
   },
   "compressor": {
-    "enabled": false,
-    "threshold_db": -24.0,
-    "ratio": 4.0,
-    "attack_ms": 10.0,
+    "enabled": true,
+    "threshold_db": -28.599999999999998,
+    "ratio": 6.9799999999999995,
+    "attack_ms": 8.0,
     "release_ms": 120.0,
-    "makeup_db": 0.0
+    "makeup_db": 3.32
   },
   "dehiss": {
     "enabled": true,
-    "strength": 0.65,
-    "threshold_db": -58.0,
-    "lpf_hz": 9000.0
+    "strength": 0.83,
+    "threshold_db": -50.72,
+    "lpf_hz": 7850.0
   }
 }

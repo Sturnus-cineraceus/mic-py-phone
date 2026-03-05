@@ -59,6 +59,15 @@ class Api:
         self.selected_input = None
         self.selected_output = None
         self.stream = None
+        # last-measured levels (RMS, linear)
+        self.last_input_rms = 0.0
+        self.last_output_rms = 0.0
+        # sinks: mapping id -> dict {fn, queue, thread, stop_event}
+        self._sinks = {}
+        self._sinks_lock = threading.Lock()
+        self._next_sink_id = 1
+        # record sink id when start_record registers a sink
+        self._record_sink_id = None
         # volume as linear multiplier (1.0 = unchanged)
         self.volume = 1.0
         # Noise gate settings
@@ -391,7 +400,7 @@ class Api:
         """
         if sd is None:
             return {"error": "sounddevice not available"}
-        if self._record_stream is not None:
+        if self._record_queue is not None or self._record_stream is not None:
             return {"error": "already recording"}
         if not target_path:
             return {"error": "no target path"}
@@ -444,24 +453,59 @@ class Api:
             def callback(indata, frames, time, status):
                 try:
                     # copy to avoid referencing memoryview from host
-                    q.put(indata.copy())
+                    arr = indata.copy()
+                    # update input level (RMS)
+                    try:
+                        a = np.asarray(arr, dtype=np.float32)
+                        if a.ndim == 1:
+                            a = a.reshape(-1, 1)
+                        self.last_input_rms = float(np.sqrt(np.mean(np.square(a.astype(np.float64)))))
+                    except Exception:
+                        pass
+                    # dispatch to registered sinks (including recorder sink)
+                    try:
+                        self._dispatch_sinks(arr)
+                    except Exception:
+                        pass
                 except Exception:
                     pass
 
-            stream = sd.InputStream(
-                device=self.selected_input,
-                samplerate=samplerate,
-                channels=channels,
-                dtype='float32',
-                callback=callback,
-            )
-            # start writer thread first
+            # If bypass stream is running, we won't open a separate InputStream; the
+            # bypass callback will push processed frames into the same queue instead.
             wt = threading.Thread(target=writer_thread_fn, daemon=True)
             wt.start()
-            stream.start()
 
-            # save state
-            self._record_stream = stream
+            # register a sink that writes into the recorder queue
+            def _rec_sink(frames):
+                try:
+                    # frames is numpy array (frames, channels)
+                    if frames is None:
+                        return
+                    arr = np.asarray(frames, dtype=np.float32)
+                    q.put(arr)
+                except Exception:
+                    pass
+
+            try:
+                resp = self.register_sink(_rec_sink)
+                if not resp.get('error') and resp.get('id'):
+                    self._record_sink_id = resp.get('id')
+            except Exception:
+                self._record_sink_id = None
+
+            if self.stream is None:
+                # start dedicated input stream only when bypass is not running
+                stream = sd.InputStream(
+                    device=self.selected_input,
+                    samplerate=samplerate,
+                    channels=channels,
+                    dtype='float32',
+                    callback=callback,
+                )
+                stream.start()
+                self._record_stream = stream
+
+            # save state (writer thread + queue in all cases)
             self._record_queue = q
             self._record_writer_thread = wt
             self._record_wav_path = tmp_path
@@ -475,15 +519,34 @@ class Api:
         """Stop recording, convert temporary WAV -> MP3 using ffmpeg, and
         remove the temporary file. Returns path on success.
         """
-        if self._record_stream is None:
+        if self._record_queue is None and self._record_stream is None:
             return {"error": "not recording"}
         try:
+            # stop/close only if a dedicated record stream object exists
             try:
-                self._record_stream.stop()
+                if self._record_stream is not None:
+                    if hasattr(self._record_stream, 'stop'):
+                        try:
+                            self._record_stream.stop()
+                        except Exception:
+                            pass
+                    if hasattr(self._record_stream, 'close'):
+                        try:
+                            self._record_stream.close()
+                        except Exception:
+                            pass
             except Exception:
+                # defensive: any unexpected error while stopping/closing should not prevent finalization
                 pass
+
+            # unregister recorder sink if registered
             try:
-                self._record_stream.close()
+                if self._record_sink_id is not None:
+                    try:
+                        self.unregister_sink(self._record_sink_id)
+                    except Exception:
+                        pass
+                    self._record_sink_id = None
             except Exception:
                 pass
 
@@ -567,6 +630,117 @@ class Api:
             return {"gain_db": float(gain_db)}
         except Exception as e:
             return {"error": str(e)}
+
+    def get_levels(self):
+        """Return recent input/output levels (linear RMS and dB)."""
+        try:
+            in_rms = float(self.last_input_rms or 0.0)
+            out_rms = float(self.last_output_rms or 0.0)
+            in_db = 20.0 * math.log10(in_rms + 1e-12)
+            out_db = 20.0 * math.log10(out_rms + 1e-12)
+            return {
+                "input_rms": in_rms,
+                "output_rms": out_rms,
+                "input_db": float(in_db),
+                "output_db": float(out_db),
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    # Sink management -------------------------------------------------
+    def register_sink(self, sink_callable):
+        """Register a sink callable that will be invoked with processed frames.
+
+        The callable will be called as sink(frames: np.ndarray).
+        Returns an integer sink id which can be used to unregister.
+        """
+        try:
+            with self._sinks_lock:
+                sid = self._next_sink_id
+                self._next_sink_id += 1
+                q = queue.Queue(maxsize=16)
+                stop_ev = threading.Event()
+
+                def _worker():
+                    while not stop_ev.is_set():
+                        try:
+                            item = q.get()
+                            if item is None:
+                                break
+                            try:
+                                sink_callable(item)
+                            except Exception:
+                                # sink errors ignored
+                                pass
+                        except Exception:
+                            # loop on errors
+                            continue
+
+                th = threading.Thread(target=_worker, daemon=True)
+                th.start()
+                self._sinks[sid] = {"fn": sink_callable, "queue": q, "thread": th, "stop": stop_ev}
+            return {"ok": True, "id": sid}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def unregister_sink(self, sid):
+        try:
+            with self._sinks_lock:
+                info = self._sinks.pop(sid, None)
+            if info is not None:
+                try:
+                    info.get("stop").set()
+                except Exception:
+                    pass
+                try:
+                    q = info.get("queue")
+                    if q is not None:
+                        try:
+                            q.put_nowait(None)
+                        except Exception:
+                            try:
+                                q.put(None, block=False)
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                try:
+                    th = info.get("thread")
+                    if th is not None and th.is_alive():
+                        th.join(timeout=1.0)
+                except Exception:
+                    pass
+            return {"ok": True}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def _dispatch_sinks(self, frames):
+        """Call all registered sinks with a copy of frames (non-blocking).
+
+        Exceptions in sinks are caught and ignored to avoid destabilizing the
+        audio callback.
+        """
+        try:
+            if frames is None:
+                return
+            arr = np.asarray(frames, dtype=np.float32)
+            with self._sinks_lock:
+                sinks = list(self._sinks.items())
+            for sid, info in sinks:
+                try:
+                    q = info.get("queue")
+                    if q is None:
+                        continue
+                    # try non-blocking enqueue, drop if full
+                    try:
+                        q.put_nowait(arr.copy())
+                    except Exception:
+                        # drop frame when sink queue is full
+                        pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def set_gain_db(self, db):
         try:
@@ -958,6 +1132,12 @@ class Api:
                     if fdata.ndim == 1:
                         fdata = fdata.reshape(-1, 1)
 
+                    # update input RMS (before processing)
+                    try:
+                        self.last_input_rms = float(np.sqrt(np.mean(np.square(fdata.astype(np.float64)))))
+                    except Exception:
+                        pass
+
                     # Apply noise reduction if enabled and available.
                     # Use per-channel stationary spectral gating which works well for white noise.
                     try:
@@ -1208,8 +1388,18 @@ class Api:
                         gain_sm = alpha_g * gain_sm + (1.0 - alpha_g) * target_gain
                         # apply smoothed gain
                         if gain_sm <= 0.001:
-                            outdata.fill(0)
-                            return
+                                # if muted, still dispatch silence to sinks if active
+                                try:
+                                    outdata.fill(0)
+                                    if self._sinks:
+                                        zeros = np.zeros_like(fdata)
+                                        try:
+                                            self._dispatch_sinks(zeros)
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
+                                return
                         fdata = fdata * float(gain_sm)
 
                     # post stage: explicit gain then de-hiss to reduce amplified white noise
@@ -1269,6 +1459,22 @@ class Api:
                             + (1.0 - alpha_pg) * target_post_gain
                         )
                         fdata = fdata * float(dehiss_gain_sm)
+
+                    # update output RMS (after processing)
+                    try:
+                        self.last_output_rms = float(np.sqrt(np.mean(np.square(fdata.astype(np.float64)))))
+                    except Exception:
+                        pass
+
+                    # dispatch processed frames to all sinks (recorder, others)
+                    try:
+                        if self._sinks and fdata.size > 0:
+                            try:
+                                self._dispatch_sinks(fdata)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
 
                     # write to outdata, scaling per channel
                     if fdata.shape[1] == 1 and outdata.shape[1] > 1:

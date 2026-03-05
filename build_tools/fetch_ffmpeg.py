@@ -3,7 +3,8 @@ import sys
 import shutil
 import zipfile
 import tempfile
-from urllib.request import urlopen, urlretrieve
+from urllib.request import urlopen
+import shutil
 
 DEFAULT_WIN_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 
@@ -21,13 +22,32 @@ def download_and_extract_ffmpeg(dest_dir: str, url: str = None):
     bin_dir = os.path.join(dest_dir, "bin")
     os.makedirs(bin_dir, exist_ok=True)
 
-    # Download to temporary file
+    # Download to temporary file with progress reporting
     tmpfd, tmpname = tempfile.mkstemp(suffix=".zip")
     os.close(tmpfd)
     try:
         print(f"Downloading ffmpeg from {url} ...")
-        urlretrieve(url, tmpname)
-        print("Download complete, extracting...")
+        with urlopen(url) as resp, open(tmpname, 'wb') as out:
+            total = resp.getheader('Content-Length')
+            try:
+                total = int(total) if total is not None else None
+            except Exception:
+                total = None
+
+            downloaded = 0
+            chunk_size = 64 * 1024
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                out.write(chunk)
+                downloaded += len(chunk)
+                if total:
+                    pct = downloaded / total * 100.0
+                    print(f"\rDownloaded {downloaded/1024/1024:.2f} MB / {total/1024/1024:.2f} MB ({pct:5.1f}%)", end='')
+                else:
+                    print(f"\rDownloaded {downloaded/1024/1024:.2f} MB", end='')
+            print('\nDownload complete, extracting...')
         with zipfile.ZipFile(tmpname, 'r') as z:
             # Find ffmpeg.exe or ffmpeg in archive and extract
             candidates = [n for n in z.namelist() if n.lower().endswith('ffmpeg.exe') or n.endswith('/ffmpeg')]
