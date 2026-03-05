@@ -1,6 +1,25 @@
-document.getElementById('audioBtn').addEventListener('click', loadAudioDevices);
 document.getElementById('startBtn').addEventListener('click', startBypass);
 document.getElementById('stopBtn').addEventListener('click', stopBypass);
+
+// 自動読み込み: 起動時にデバイス一覧を取得してプルダウンを埋める
+function scheduleLoadAudioDevices(){
+  const runLoad = () => {
+    if(window.pywebview && window.pywebview.api){
+      loadAudioDevices();
+    } else {
+      window.addEventListener('pywebviewready', loadAudioDevices);
+    }
+  };
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', runLoad);
+  } else {
+    runLoad();
+  }
+}
+
+// 起動時に一度だけ実行
+scheduleLoadAudioDevices();
 
 async function loadAudioDevices(){
   const statusEl = document.getElementById('status');
@@ -68,6 +87,18 @@ async function loadAudioDevices(){
       const idx = e.target.value;
       try{ await window.pywebview.api.set_output_device(idx); statusEl.textContent = '状態: 出力選択 ' + idx; }catch(err){ statusEl.textContent = '設定失敗: ' + err; }
     };
+
+    // Ensure backend has the currently-selected values even if the user didn't change the selects
+    try{
+      const curIn = inputSelect.value;
+      const curOut = outputSelect.value;
+      if(curIn !== undefined && curIn !== null && curIn !== ''){
+        try{ await window.pywebview.api.set_input_device(curIn); }catch(e){ /* ignore */ }
+      }
+      if(curOut !== undefined && curOut !== null && curOut !== ''){
+        try{ await window.pywebview.api.set_output_device(curOut); }catch(e){ /* ignore */ }
+      }
+    }catch(e){ /* ignore */ }
 
     statusEl.textContent = '状態: デバイス読み込み完了';
   }catch(e){
