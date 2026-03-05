@@ -11,6 +11,8 @@ import subprocess
 import uuid
 
 from .settings_manager import SettingsManager
+from .sink_manager import SinkManager
+from .recorder import Recorder
 
 try:
     import sounddevice as sd
@@ -52,22 +54,16 @@ class Api:
     def __init__(self):
         # recording state
         self._record_stream = None
-        self._record_queue = None
-        self._record_writer_thread = None
-        self._record_wav_path = None
-        self._record_target_path = None
         self.selected_input = None
         self.selected_output = None
         self.stream = None
         # last-measured levels (RMS, linear)
         self.last_input_rms = 0.0
         self.last_output_rms = 0.0
-        # sinks: mapping id -> dict {fn, queue, thread, stop_event}
-        self._sinks = {}
-        self._sinks_lock = threading.Lock()
-        self._next_sink_id = 1
-        # record sink id when start_record registers a sink
-        self._record_sink_id = None
+        # sink manager (extracted to reduce Api size)
+        self._sink_mgr = SinkManager()
+        # recorder helper handles WAV writing and ffmpeg conversion
+        self._recorder = Recorder(self._sink_mgr)
         # volume as linear multiplier (1.0 = unchanged)
         self.volume = 1.0
         # Noise gate settings
@@ -400,7 +396,7 @@ class Api:
         """
         if sd is None:
             return {"error": "sounddevice not available"}
-        if self._record_queue is not None or self._record_stream is not None:
+        if self._recorder.is_recording() or self._record_stream is not None:
             return {"error": "already recording"}
         if not target_path:
             return {"error": "no target path"}
@@ -410,51 +406,14 @@ class Api:
             samplerate = int(dev.get('default_samplerate') or 44100)
             channels = int(dev.get('max_input_channels') or 1)
 
-            # prepare temporary wav path in same directory
-            target_path = str(target_path)
-            if not target_path.lower().endswith('.mp3'):
-                # allow user to choose .wav too; normalize final target to .mp3
-                base = os.path.splitext(target_path)[0]
-                mp3_target = base + '.mp3'
-            else:
-                mp3_target = target_path
-
-            tmp_name = f'.pymic_rec_{uuid.uuid4().hex}.wav'
-            tmp_path = os.path.join(os.path.dirname(mp3_target) or '.', tmp_name)
-
-            wf = wave.open(tmp_path, 'wb')
-            wf.setnchannels(channels)
-            wf.setsampwidth(2)  # 16-bit
-            wf.setframerate(samplerate)
-
-            q = queue.Queue()
-
-            def writer_thread_fn():
-                try:
-                    while True:
-                        item = q.get()
-                        if item is None:
-                            break
-                        # item is a numpy array (frames, channels)
-                        try:
-                            arr = np.asarray(item, dtype=np.float32)
-                            # clip and convert to int16
-                            arr = np.clip(arr, -1.0, 1.0)
-                            int16 = (arr * 32767.0).astype(np.int16)
-                            wf.writeframes(int16.tobytes())
-                        except Exception:
-                            continue
-                finally:
-                    try:
-                        wf.close()
-                    except Exception:
-                        pass
+            # register recorder sink which will create a temporary wav and write frames
+            resp = self._recorder.start(target_path, samplerate, channels)
+            if resp.get('error'):
+                return resp
 
             def callback(indata, frames, time, status):
                 try:
-                    # copy to avoid referencing memoryview from host
                     arr = indata.copy()
-                    # update input level (RMS)
                     try:
                         a = np.asarray(arr, dtype=np.float32)
                         if a.ndim == 1:
@@ -462,7 +421,6 @@ class Api:
                         self.last_input_rms = float(np.sqrt(np.mean(np.square(a.astype(np.float64)))))
                     except Exception:
                         pass
-                    # dispatch to registered sinks (including recorder sink)
                     try:
                         self._dispatch_sinks(arr)
                     except Exception:
@@ -470,31 +428,7 @@ class Api:
                 except Exception:
                     pass
 
-            # If bypass stream is running, we won't open a separate InputStream; the
-            # bypass callback will push processed frames into the same queue instead.
-            wt = threading.Thread(target=writer_thread_fn, daemon=True)
-            wt.start()
-
-            # register a sink that writes into the recorder queue
-            def _rec_sink(frames):
-                try:
-                    # frames is numpy array (frames, channels)
-                    if frames is None:
-                        return
-                    arr = np.asarray(frames, dtype=np.float32)
-                    q.put(arr)
-                except Exception:
-                    pass
-
-            try:
-                resp = self.register_sink(_rec_sink)
-                if not resp.get('error') and resp.get('id'):
-                    self._record_sink_id = resp.get('id')
-            except Exception:
-                self._record_sink_id = None
-
             if self.stream is None:
-                # start dedicated input stream only when bypass is not running
                 stream = sd.InputStream(
                     device=self.selected_input,
                     samplerate=samplerate,
@@ -505,12 +439,6 @@ class Api:
                 stream.start()
                 self._record_stream = stream
 
-            # save state (writer thread + queue in all cases)
-            self._record_queue = q
-            self._record_writer_thread = wt
-            self._record_wav_path = tmp_path
-            self._record_target_path = mp3_target
-
             return {"ok": True}
         except Exception as e:
             return {"error": str(e), "trace": traceback.format_exc()}
@@ -519,10 +447,9 @@ class Api:
         """Stop recording, convert temporary WAV -> MP3 using ffmpeg, and
         remove the temporary file. Returns path on success.
         """
-        if self._record_queue is None and self._record_stream is None:
+        if (not self._recorder.is_recording()) and self._record_stream is None:
             return {"error": "not recording"}
         try:
-            # stop/close only if a dedicated record stream object exists
             had_record_stream = self._record_stream is not None
             try:
                 if self._record_stream is not None:
@@ -537,75 +464,25 @@ class Api:
                         except Exception:
                             pass
             except Exception:
-                # defensive: any unexpected error while stopping/closing should not prevent finalization
                 pass
 
-            # unregister recorder sink if registered
-            try:
-                if self._record_sink_id is not None:
-                    try:
-                        self.unregister_sink(self._record_sink_id)
-                    except Exception:
-                        pass
-                    self._record_sink_id = None
-            except Exception:
-                pass
-
-            # signal writer thread to finish
-            try:
-                if self._record_queue is not None:
-                    self._record_queue.put(None)
-            except Exception:
-                pass
-
-            # wait for writer thread to finish
-            try:
-                if self._record_writer_thread is not None:
-                    self._record_writer_thread.join(timeout=5.0)
-            except Exception:
-                pass
-
-            tmp = self._record_wav_path
-            target = self._record_target_path
-
-            # reset recording state early to allow new recordings
+            # clear reference to dedicated record stream
             self._record_stream = None
-            self._record_queue = None
-            self._record_writer_thread = None
-            self._record_wav_path = None
-            self._record_target_path = None
 
-            # if we stopped a dedicated record input stream, clear input level
+            # stop recorder (unregister sink, convert file)
+            try:
+                resp = self._recorder.stop()
+            except Exception as e:
+                resp = {"error": str(e)}
+
+            # clear input level if we stopped a dedicated input stream
             try:
                 if had_record_stream:
                     self.last_input_rms = 0.0
             except Exception:
                 pass
 
-            if not tmp or not os.path.exists(tmp):
-                return {"error": "temporary wav not found"}
-
-            # convert with ffmpeg (must be installed on system)
-            try:
-                cmd = [
-                    'ffmpeg', '-y', '-i', tmp, '-codec:a', 'libmp3lame', '-qscale:a', '2', target
-                ]
-                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if proc.returncode != 0:
-                    # conversion failed; keep tmp wav but report error
-                    return {"error": "ffmpeg conversion failed", "stderr": proc.stderr.decode(errors='replace')}
-            except FileNotFoundError:
-                return {"error": "ffmpeg not found on PATH; install ffmpeg to enable mp3 export"}
-            except Exception as e:
-                return {"error": str(e), "trace": traceback.format_exc()}
-
-            # remove temporary wav
-            try:
-                os.remove(tmp)
-            except Exception:
-                pass
-
-            return {"ok": True, "path": str(target)}
+            return resp
         except Exception as e:
             return {"error": str(e), "trace": traceback.format_exc()}
 
@@ -663,62 +540,13 @@ class Api:
         Returns an integer sink id which can be used to unregister.
         """
         try:
-            with self._sinks_lock:
-                sid = self._next_sink_id
-                self._next_sink_id += 1
-                q = queue.Queue(maxsize=16)
-                stop_ev = threading.Event()
-
-                def _worker():
-                    while not stop_ev.is_set():
-                        try:
-                            item = q.get()
-                            if item is None:
-                                break
-                            try:
-                                sink_callable(item)
-                            except Exception:
-                                # sink errors ignored
-                                pass
-                        except Exception:
-                            # loop on errors
-                            continue
-
-                th = threading.Thread(target=_worker, daemon=True)
-                th.start()
-                self._sinks[sid] = {"fn": sink_callable, "queue": q, "thread": th, "stop": stop_ev}
-            return {"ok": True, "id": sid}
+            return self._sink_mgr.register(sink_callable)
         except Exception as e:
             return {"error": str(e)}
 
     def unregister_sink(self, sid):
         try:
-            with self._sinks_lock:
-                info = self._sinks.pop(sid, None)
-            if info is not None:
-                try:
-                    info.get("stop").set()
-                except Exception:
-                    pass
-                try:
-                    q = info.get("queue")
-                    if q is not None:
-                        try:
-                            q.put_nowait(None)
-                        except Exception:
-                            try:
-                                q.put(None, block=False)
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-                try:
-                    th = info.get("thread")
-                    if th is not None and th.is_alive():
-                        th.join(timeout=1.0)
-                except Exception:
-                    pass
-            return {"ok": True}
+            return self._sink_mgr.unregister(sid)
         except Exception as e:
             return {"error": str(e)}
 
@@ -729,24 +557,7 @@ class Api:
         audio callback.
         """
         try:
-            if frames is None:
-                return
-            arr = np.asarray(frames, dtype=np.float32)
-            with self._sinks_lock:
-                sinks = list(self._sinks.items())
-            for sid, info in sinks:
-                try:
-                    q = info.get("queue")
-                    if q is None:
-                        continue
-                    # try non-blocking enqueue, drop if full
-                    try:
-                        q.put_nowait(arr.copy())
-                    except Exception:
-                        # drop frame when sink queue is full
-                        pass
-                except Exception:
-                    pass
+            return self._sink_mgr.dispatch(frames)
         except Exception:
             pass
 
@@ -1399,7 +1210,7 @@ class Api:
                                 # if muted, still dispatch silence to sinks if active
                                 try:
                                     outdata.fill(0)
-                                    if self._sinks:
+                                    if self._sink_mgr and self._sink_mgr.has_sinks():
                                         zeros = np.zeros_like(fdata)
                                         try:
                                             self._dispatch_sinks(zeros)
@@ -1476,7 +1287,7 @@ class Api:
 
                     # dispatch processed frames to all sinks (recorder, others)
                     try:
-                        if self._sinks and fdata.size > 0:
+                        if self._sink_mgr and self._sink_mgr.has_sinks() and fdata.size > 0:
                             try:
                                 self._dispatch_sinks(fdata)
                             except Exception:
