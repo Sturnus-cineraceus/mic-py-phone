@@ -50,3 +50,28 @@ body.dark{
 .accordion-header:focus{outline:2px solid rgba(37,99,235,0.2)}
 
 body.dark .accordion-header{border-color:rgba(255,255,255,0.06)}
+
+/* Toast notifications */
+.toast-area{
+  position:fixed;
+  top:16px;
+  right:16px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  z-index:9999;
+}
+.toast{
+  background: #111827;
+  color: #fff;
+  padding:10px 14px;
+  border-radius:8px;
+  box-shadow:0 6px 18px rgba(16,24,40,0.18);
+  opacity:0;
+  transform:translateY(-6px);
+  transition:opacity 260ms ease, transform 260ms ease;
+  font-size:13px;
+}
+.toast.show{ opacity:1; transform:translateY(0); }
+.toast.success{ background:#059669; }
+.toast.error{ background:#dc2626; }
