@@ -1,5 +1,8 @@
 document.getElementById('startBtn').addEventListener('click', startBypass);
 document.getElementById('stopBtn').addEventListener('click', stopBypass);
+document.getElementById('saveBtn').addEventListener('click', saveSettings);
+document.getElementById('loadBtn').addEventListener('click', loadSettings);
+document.getElementById('resetBtn').addEventListener('click', resetSettings);
 
 // Accordion toggle for audio console: collapsed by default
 function setupAudioAccordion(){
@@ -420,4 +423,141 @@ async function stopBypass(){
     document.getElementById('startBtn').disabled = false;
     document.getElementById('stopBtn').disabled = true;
   }catch(e){ statusEl.textContent = '停止失敗: ' + e; }
+}
+
+// Re-initialize all controls from backend state (used after load/reset)
+async function refreshAllControls(){
+  try{
+    // gain
+    if(window.pywebview && window.pywebview.api && window.pywebview.api.get_gain_db){
+      const resp = await window.pywebview.api.get_gain_db();
+      if(!resp.error && typeof resp.gain_db !== 'undefined'){
+        const gainEl = document.getElementById('gainRange');
+        const gainValEl = document.getElementById('gainVal');
+        if(gainEl && gainValEl){
+          const v = Number(resp.gain_db).toFixed(1);
+          gainEl.value = String(v);
+          gainValEl.textContent = `${v} dB`;
+        }
+      }
+    }
+    // gate, hpf, compressor, dehiss, nr
+    if(window.pywebview && window.pywebview.api && window.pywebview.api.get_easy_settings){
+      const resp = await window.pywebview.api.get_easy_settings();
+      if(!resp.error){
+        if(resp.gate){
+          const gateEnabled = document.getElementById('gateEnabled');
+          const gateRange = document.getElementById('gateRange');
+          const gateVal = document.getElementById('gateVal');
+          if(gateEnabled) gateEnabled.checked = !!resp.gate.enabled;
+          if(gateRange && gateVal){
+            const p = toPercent01(resp.gate.strength ?? 0.5);
+            gateRange.value = String(p);
+            gateVal.textContent = strengthLabel(p);
+          }
+        }
+        if(resp.hpf){
+          const hpfEnabled = document.getElementById('hpfEnabled');
+          const hpfCutoff = document.getElementById('hpfCutoff');
+          const hpfVal = document.getElementById('hpfVal');
+          if(hpfEnabled) hpfEnabled.checked = !!resp.hpf.enabled;
+          if(hpfCutoff && hpfVal){
+            const p = toPercent01(resp.hpf.strength ?? 0.5);
+            hpfCutoff.value = String(p);
+            hpfVal.textContent = strengthLabel(p);
+          }
+        }
+        if(resp.compressor){
+          const compEnabled = document.getElementById('compEnabled');
+          const compRatio = document.getElementById('compRatio');
+          const compRatioVal = document.getElementById('compRatioVal');
+          if(compEnabled) compEnabled.checked = !!resp.compressor.enabled;
+          if(compRatio && compRatioVal){
+            const p = toPercent01(resp.compressor.strength ?? 0.5);
+            compRatio.value = String(p);
+            compRatioVal.textContent = strengthLabel(p);
+          }
+        }
+        if(resp.final_noise){
+          const dehissEnabled = document.getElementById('dehissEnabled');
+          const dehissStrength = document.getElementById('dehissStrength');
+          const dehissVal = document.getElementById('dehissVal');
+          if(dehissEnabled) dehissEnabled.checked = !!resp.final_noise.enabled;
+          if(dehissStrength && dehissVal){
+            const p = toPercent01(resp.final_noise.strength ?? 0.5);
+            dehissStrength.value = String(p);
+            dehissVal.textContent = strengthLabel(p);
+          }
+        }
+      }
+    }
+    if(window.pywebview && window.pywebview.api && window.pywebview.api.get_nr_settings){
+      const resp = await window.pywebview.api.get_nr_settings();
+      if(!resp.error){
+        const nrEnabled = document.getElementById('nrEnabled');
+        const nrStrength = document.getElementById('nrStrength');
+        const nrStrengthVal = document.getElementById('nrStrengthVal');
+        if(nrEnabled) nrEnabled.checked = !!resp.enabled;
+        if(nrStrength && typeof resp.strength !== 'undefined'){
+          const p = toPercent01(resp.strength);
+          nrStrength.value = String(p);
+          if(nrStrengthVal) nrStrengthVal.textContent = strengthLabel(p);
+        }
+      }
+    }
+    // sync device selection
+    if(window.pywebview && window.pywebview.api && window.pywebview.api.get_selected_devices){
+      const resp = await window.pywebview.api.get_selected_devices();
+      if(!resp.error){
+        const inputSelect = document.getElementById('inputSelect');
+        const outputSelect = document.getElementById('outputSelect');
+        if(inputSelect && resp.input !== null && resp.input !== undefined){
+          const opt = inputSelect.querySelector(`option[value="${resp.input}"]`);
+          if(opt) opt.selected = true;
+        }
+        if(outputSelect && resp.output !== null && resp.output !== undefined){
+          const opt2 = outputSelect.querySelector(`option[value="${resp.output}"]`);
+          if(opt2) opt2.selected = true;
+        }
+      }
+    }
+  }catch(e){ /* ignore refresh errors */ }
+}
+
+async function saveSettings(){
+  const statusEl = document.getElementById('status');
+  try{
+    const resp = await window.pywebview.api.save_settings();
+    if(resp.error){
+      statusEl.textContent = '設定保存失敗: ' + resp.error;
+    } else {
+      statusEl.textContent = '設定を保存しました: ' + (resp.path || '');
+    }
+  }catch(e){ statusEl.textContent = '設定保存失敗: ' + e; }
+}
+
+async function loadSettings(){
+  const statusEl = document.getElementById('status');
+  try{
+    const resp = await window.pywebview.api.load_settings();
+    if(resp.error){
+      statusEl.textContent = '設定読み込み失敗: ' + resp.error;
+    } else {
+      await refreshAllControls();
+      statusEl.textContent = '設定を読み込みました';
+    }
+  }catch(e){ statusEl.textContent = '設定読み込み失敗: ' + e; }
+}
+
+async function resetSettings(){
+  const statusEl = document.getElementById('status');
+  try{
+    const resp = await window.pywebview.api.reset_settings();
+    if(resp.error){
+      statusEl.textContent = 'デフォルトリセット失敗: ' + resp.error;
+    } else {
+      await refreshAllControls();
+      statusEl.textContent = 'デフォルト設定に戻しました';
+    }
+  }catch(e){ statusEl.textContent = 'デフォルトリセット失敗: ' + e; }
 }

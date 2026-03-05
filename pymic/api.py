@@ -1,7 +1,10 @@
-import traceback
 import math
 import importlib
+import traceback
+
 import numpy as np
+
+from .settings_manager import SettingsManager
 
 try:
     import sounddevice as sd
@@ -69,6 +72,9 @@ class Api:
         self.dehiss_lpf_hz = 9000.0
         self.dehiss_threshold_db = -58.0
         self.dehiss_strength = 0.65
+        # Settings persistence
+        self._settings_manager = SettingsManager()
+        self._apply_settings(self._settings_manager.load())
 
     def _to_strength01(self, value):
         try:
@@ -87,6 +93,160 @@ class Api:
 
     def _get_comp_strength(self):
         return max(0.0, min(1.0, (float(self.comp_ratio) - 2.0) / 6.0))
+
+    def _collect_settings(self) -> dict:
+        """Collect current API state into a settings dict."""
+        gain_db = 0.0
+        if self.volume > 0:
+            gain_db = 20.0 * math.log10(float(self.volume))
+        return {
+            "gain_db": gain_db,
+            "input_device": self.selected_input,
+            "output_device": self.selected_output,
+            "gate": {
+                "enabled": bool(self.gate_enabled),
+                "threshold_db": float(self.gate_threshold_db),
+                "attack_ms": float(self.gate_attack_ms),
+                "release_ms": float(self.gate_release_ms),
+            },
+            "hpf": {
+                "enabled": bool(self.hpf_enabled),
+                "cutoff_hz": float(self.hpf_cutoff_hz),
+            },
+            "nr": {
+                "enabled": bool(self.nr_enabled),
+                "strength": float(self.nr_strength),
+            },
+            "compressor": {
+                "enabled": bool(self.comp_enabled),
+                "threshold_db": float(self.comp_threshold_db),
+                "ratio": float(self.comp_ratio),
+                "attack_ms": float(self.comp_attack_ms),
+                "release_ms": float(self.comp_release_ms),
+                "makeup_db": float(self.comp_makeup_db),
+            },
+            "dehiss": {
+                "enabled": bool(self.dehiss_enabled),
+                "strength": float(self.dehiss_strength),
+                "threshold_db": float(self.dehiss_threshold_db),
+                "lpf_hz": float(self.dehiss_lpf_hz),
+            },
+        }
+
+    def _apply_settings(self, settings: dict) -> None:
+        """Apply a settings dict to the current API state."""
+        if not isinstance(settings, dict):
+            return
+        try:
+            gain_db = float(settings.get("gain_db", 0.0))
+            self.volume = float(10.0 ** (gain_db / 20.0))
+        except Exception:
+            pass
+        self.selected_input = settings.get("input_device", self.selected_input)
+        self.selected_output = settings.get("output_device", self.selected_output)
+        gate = settings.get("gate", {})
+        if isinstance(gate, dict):
+            self.gate_enabled = bool(gate.get("enabled", self.gate_enabled))
+            try:
+                self.gate_threshold_db = float(gate.get("threshold_db", self.gate_threshold_db))
+            except Exception:
+                pass
+            try:
+                self.gate_attack_ms = float(gate.get("attack_ms", self.gate_attack_ms))
+            except Exception:
+                pass
+            try:
+                self.gate_release_ms = float(gate.get("release_ms", self.gate_release_ms))
+            except Exception:
+                pass
+        hpf = settings.get("hpf", {})
+        if isinstance(hpf, dict):
+            self.hpf_enabled = bool(hpf.get("enabled", self.hpf_enabled))
+            try:
+                self.hpf_cutoff_hz = float(hpf.get("cutoff_hz", self.hpf_cutoff_hz))
+            except Exception:
+                pass
+        nr = settings.get("nr", {})
+        if isinstance(nr, dict):
+            self.nr_enabled = bool(nr.get("enabled", self.nr_enabled))
+            try:
+                self.nr_strength = float(nr.get("strength", self.nr_strength))
+            except Exception:
+                pass
+        comp = settings.get("compressor", {})
+        if isinstance(comp, dict):
+            self.comp_enabled = bool(comp.get("enabled", self.comp_enabled))
+            try:
+                self.comp_threshold_db = float(comp.get("threshold_db", self.comp_threshold_db))
+            except Exception:
+                pass
+            try:
+                self.comp_ratio = float(comp.get("ratio", self.comp_ratio))
+            except Exception:
+                pass
+            try:
+                self.comp_attack_ms = float(comp.get("attack_ms", self.comp_attack_ms))
+            except Exception:
+                pass
+            try:
+                self.comp_release_ms = float(comp.get("release_ms", self.comp_release_ms))
+            except Exception:
+                pass
+            try:
+                self.comp_makeup_db = float(comp.get("makeup_db", self.comp_makeup_db))
+            except Exception:
+                pass
+        dehiss = settings.get("dehiss", {})
+        if isinstance(dehiss, dict):
+            self.dehiss_enabled = bool(dehiss.get("enabled", self.dehiss_enabled))
+            try:
+                self.dehiss_strength = float(dehiss.get("strength", self.dehiss_strength))
+            except Exception:
+                pass
+            try:
+                self.dehiss_threshold_db = float(dehiss.get("threshold_db", self.dehiss_threshold_db))
+            except Exception:
+                pass
+            try:
+                self.dehiss_lpf_hz = float(dehiss.get("lpf_hz", self.dehiss_lpf_hz))
+            except Exception:
+                pass
+
+    # Settings persistence API (called from JavaScript)
+
+    def save_settings(self):
+        """Save current settings to the user data directory."""
+        try:
+            settings = self._collect_settings()
+            self._settings_manager.save(settings)
+            return {
+                "ok": True,
+                "path": str(self._settings_manager.settings_path),
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def load_settings(self):
+        """Load settings from disk and apply them."""
+        try:
+            settings = self._settings_manager.load()
+            self._apply_settings(settings)
+            return {"ok": True, "settings": settings}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def reset_settings(self):
+        """Reset all settings to defaults and return them."""
+        try:
+            defaults = self._settings_manager.reset_defaults()
+            self._apply_settings(defaults)
+            return {"ok": True, "settings": defaults}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def get_settings_path(self):
+        """Return the path where settings are stored."""
+        return {"path": str(self._settings_manager.settings_path)}
 
     def get_easy_settings(self):
         try:
