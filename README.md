@@ -16,9 +16,30 @@ python main.py
 必要に応じて `pywebview` の GUI バックエンド（例: `pywebview[qt]`）を指定してください。
 
 PyInstaller でのビルド
+````markdown
+簡単な pywebview デモアプリです。
+
+プロジェクトはパッケージ構成になりました。推奨の起動方法:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m pymic    # 推奨: パッケージとして実行
+# 既存のワークフロー互換のため、従来通り `python main.py` でも起動できます
+```
+
+ファイル構成の主な変更点:
+- [pymic/](pymic) - アプリ本体のパッケージ（`app.py`, `api.py`, `__main__.py` など）
+- [main.py](main.py) - 互換シム（従来の起動方法を壊さないための薄いラッパー）
+- [web/index.html](web/index.html) - UI 資産
+
+必要に応じて `pywebview` の GUI バックエンド（例: `pywebview[qt]`）を指定してください。
+
+PyInstaller でのビルド
 -------------------
 
-Windows 環境で本プロジェクトを単一実行ファイル（またはフォルダ）にパッケージする例です。プロジェクトルート（この `README.md` と同じディレクトリ）で実行してください。`web` ディレクトリを実行ファイルに含めるために `--add-data` オプションを使います（Windows のパス区切りは `;` を使います）。
+Windows 環境で本プロジェクトを単一実行ファイル（またはフォルダ）にパッケージする例です。プロジェクトルートで実行してください。`web` ディレクトリを実行ファイルに含めるために `--add-data` オプションを使います（Windows のパス区切りは `;` を使います）。
 
 1) PyInstaller のインストール
 
@@ -53,4 +74,6 @@ pyinstaller --onedir --noconsole --add-data "web;web" main.py
 # ワンフォルダの場合
 .\dist\main\main.exe
 ```
+
+````
 
