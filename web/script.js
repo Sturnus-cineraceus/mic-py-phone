@@ -32,6 +32,25 @@ function toPercent01(v){
   return Math.max(0, Math.min(100, Math.round(n * 100)));
 }
 
+// Toast helper: shows an ephemeral notification (no file paths shown)
+function showToast(message, type){
+  try{
+    const area = document.getElementById('toastArea');
+    if(!area) return;
+    const t = document.createElement('div');
+    t.className = 'toast' + (type ? ' ' + type : '');
+    t.textContent = message;
+    area.appendChild(t);
+    // trigger show animation
+    window.requestAnimationFrame(()=> t.classList.add('show'));
+    // auto-dismiss
+    setTimeout(()=>{
+      t.classList.remove('show');
+      setTimeout(()=>{ if(t.parentNode) t.parentNode.removeChild(t); }, 300);
+    }, 3000);
+  }catch(e){ /* no-op */ }
+}
+
 // 自動読み込み: 起動時にデバイス一覧を取得してプルダウンを埋める
 function scheduleLoadAudioDevices(){
   const runLoad = () => {
@@ -317,19 +336,18 @@ if(document.readyState === 'loading'){
 }
 
 async function loadAudioDevices(){
-  const statusEl = document.getElementById('status');
-  statusEl.textContent = '状態: デバイス取得中...';
+  showToast('デバイス取得中...');
   try{
     const resp = await window.pywebview.api.get_audio_devices();
     if(resp.error){
-      statusEl.textContent = 'エラー: ' + resp.error;
+      showToast('エラー: ' + resp.error, 'error');
       return;
     }
     const devices = resp.devices || [];
     const hostapis = resp.hostapis || [];
     const defaultDev = resp.default_device;
     if(devices.length === 0){
-      statusEl.textContent = 'デバイスが見つかりません。';
+      showToast('デバイスが見つかりません。', 'error');
       return;
     }
 
@@ -376,11 +394,11 @@ async function loadAudioDevices(){
 
     inputSelect.onchange = async (e) => {
       const idx = e.target.value;
-      try{ await window.pywebview.api.set_input_device(idx); statusEl.textContent = '状態: 入力選択 ' + idx; }catch(err){ statusEl.textContent = '設定失敗: ' + err; }
+      try{ await window.pywebview.api.set_input_device(idx); showToast('入力を選択しました: ' + idx); }catch(err){ showToast('入力設定失敗: ' + err, 'error'); }
     };
     outputSelect.onchange = async (e) => {
       const idx = e.target.value;
-      try{ await window.pywebview.api.set_output_device(idx); statusEl.textContent = '状態: 出力選択 ' + idx; }catch(err){ statusEl.textContent = '設定失敗: ' + err; }
+      try{ await window.pywebview.api.set_output_device(idx); showToast('出力を選択しました: ' + idx); }catch(err){ showToast('出力設定失敗: ' + err, 'error'); }
     };
 
     // Ensure backend has the currently-selected values even if the user didn't change the selects
@@ -395,31 +413,29 @@ async function loadAudioDevices(){
       }
     }catch(e){ /* ignore */ }
 
-    statusEl.textContent = '状態: デバイス読み込み完了';
+    showToast('デバイス読み込み完了', 'success');
   }catch(e){
-    document.getElementById('status').textContent = '取得失敗: ' + e;
+    showToast('取得失敗: ' + e, 'error');
   }
 }
 
 async function startBypass(){
-  const statusEl = document.getElementById('status');
-  statusEl.textContent = '状態: バイパス開始中...';
+  showToast('バイパスを開始中...');
   try{
     const resp = await window.pywebview.api.start_bypass();
     if(resp.error){ statusEl.textContent = '開始失敗: ' + resp.error; return; }
-    statusEl.textContent = '状態: 実行中';
+    showToast('バイパスを開始しました。', 'success');
     document.getElementById('startBtn').disabled = true;
     document.getElementById('stopBtn').disabled = false;
   }catch(e){ statusEl.textContent = '開始失敗: ' + e; }
 }
 
 async function stopBypass(){
-  const statusEl = document.getElementById('status');
-  statusEl.textContent = '状態: 停止中...';
+  showToast('停止中...');
   try{
     const resp = await window.pywebview.api.stop_bypass();
     if(resp.error){ statusEl.textContent = '停止失敗: ' + resp.error; return; }
-    statusEl.textContent = '状態: 停止';
+    showToast('停止しました。', 'success');
     document.getElementById('startBtn').disabled = false;
     document.getElementById('stopBtn').disabled = true;
   }catch(e){ statusEl.textContent = '停止失敗: ' + e; }
@@ -525,39 +541,37 @@ async function refreshAllControls(){
 }
 
 async function saveSettings(){
-  const statusEl = document.getElementById('status');
   try{
     const resp = await window.pywebview.api.save_settings();
     if(resp.error){
-      statusEl.textContent = '設定保存失敗: ' + resp.error;
+      showToast('設定の保存に失敗しました。', 'error');
     } else {
-      statusEl.textContent = '設定を保存しました: ' + (resp.path || '');
+      // Do NOT show file paths in UI. Show a transient toast instead.
+      showToast('設定を保存しました。', 'success');
     }
-  }catch(e){ statusEl.textContent = '設定保存失敗: ' + e; }
+  }catch(e){ showToast('設定の保存に失敗しました。', 'error'); }
 }
 
 async function loadSettings(){
-  const statusEl = document.getElementById('status');
   try{
     const resp = await window.pywebview.api.load_settings();
     if(resp.error){
-      statusEl.textContent = '設定読み込み失敗: ' + resp.error;
+      showToast('設定読み込み失敗: ' + resp.error, 'error');
     } else {
       await refreshAllControls();
-      statusEl.textContent = '設定を読み込みました';
+      showToast('設定を読み込みました。');
     }
-  }catch(e){ statusEl.textContent = '設定読み込み失敗: ' + e; }
+  }catch(e){ showToast('設定読み込み失敗: ' + e, 'error'); }
 }
 
 async function resetSettings(){
-  const statusEl = document.getElementById('status');
   try{
     const resp = await window.pywebview.api.reset_settings();
     if(resp.error){
-      statusEl.textContent = 'デフォルトリセット失敗: ' + resp.error;
+      showToast('デフォルトリセット失敗: ' + resp.error, 'error');
     } else {
       await refreshAllControls();
-      statusEl.textContent = 'デフォルト設定に戻しました';
+      showToast('デフォルト設定に戻しました。');
     }
-  }catch(e){ statusEl.textContent = 'デフォルトリセット失敗: ' + e; }
+  }catch(e){ showToast('デフォルトリセット失敗: ' + e, 'error'); }
 }
