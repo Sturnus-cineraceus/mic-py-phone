@@ -26,6 +26,15 @@ body{
 button{background:var(--accent);color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
 .message{margin-top:12px;padding:10px;background:#f3f4f6;border-radius:8px}
 
+/* Icon-style circular buttons for pictograms */
+.icon-btn{display:inline-flex;align-items:center;justify-content:center; width:44px; height:44px; padding:0;border-radius:10px; background:var(--accent); color:#fff; border:0; cursor:pointer}
+.icon-btn .material-icons{ font-size:20px; line-height:1 }
+.icon-btn:disabled{ opacity:0.5; cursor:not-allowed }
+.icon-btn.recording{ background:#dc2626; box-shadow:0 4px 14px rgba(220,38,38,0.24) }
+
+/* visually hidden helper for accessible text */
+.visually-hidden{ position:absolute !important; height:1px; width:1px; overflow:hidden; clip:rect(1px,1px,1px,1px); white-space:nowrap }
+
 /* Device select styling: larger, consistent width and focus styles */
 .device-selects{margin-top:8px; display:flex; flex-direction:column; gap:8px}
 .device-label{display:block; font-weight:700; color:var(--text);}

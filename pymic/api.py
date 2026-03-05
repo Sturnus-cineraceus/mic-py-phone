@@ -523,6 +523,7 @@ class Api:
             return {"error": "not recording"}
         try:
             # stop/close only if a dedicated record stream object exists
+            had_record_stream = self._record_stream is not None
             try:
                 if self._record_stream is not None:
                     if hasattr(self._record_stream, 'stop'):
@@ -573,6 +574,13 @@ class Api:
             self._record_writer_thread = None
             self._record_wav_path = None
             self._record_target_path = None
+
+            # if we stopped a dedicated record input stream, clear input level
+            try:
+                if had_record_stream:
+                    self.last_input_rms = 0.0
+            except Exception:
+                pass
 
             if not tmp or not os.path.exists(tmp):
                 return {"error": "temporary wav not found"}
@@ -1518,6 +1526,17 @@ class Api:
             except Exception:
                 pass
             self.stream = None
+
+            # clear measured levels when bypass stops
+            try:
+                self.last_input_rms = 0.0
+            except Exception:
+                pass
+            try:
+                self.last_output_rms = 0.0
+            except Exception:
+                pass
+
             return {"running": False}
         except Exception as e:
             return {"error": str(e), "trace": traceback.format_exc()}

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>pymic - Audio Bypass</title>
   <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
 <body>
   <header class="site-header">
@@ -20,15 +21,23 @@
       </div>
 
       <!-- 自動取得に移行したためボタンを削除しました -->
-      <div style="margin-top:12px">
-        <button id="startBtn">開始</button>
-        <button id="stopBtn" disabled>停止</button>
+      <div style="margin-top:12px; display:flex; align-items:center; gap:12px">
+        <button id="startBtn" class="icon-btn" title="バイパスを開始" aria-label="バイパスを開始">
+          <span class="material-icons" aria-hidden="true">play_arrow</span>
+        </button>
+        <button id="stopBtn" class="icon-btn" title="バイパスを停止" aria-label="バイパスを停止" disabled>
+          <span class="material-icons" aria-hidden="true">stop</span>
+        </button>
         <div id="bypassStatus" class="message" style="display:inline-block; margin-left:12px">ステータス: 停止中</div>
       </div>
 
-      <div style="margin-top:12px; border-top:1px dashed #ddd; padding-top:8px">
-        <button id="recBtn">● 録音</button>
-        <button id="recStopBtn" disabled>■ 録音停止</button>
+      <div style="margin-top:12px; border-top:1px dashed #ddd; padding-top:8px; display:flex; align-items:center; gap:12px;">
+        <button id="recBtn" class="icon-btn" title="録音を開始" aria-label="録音を開始">
+          <span class="material-icons" aria-hidden="true">mic</span>
+        </button>
+        <button id="recStopBtn" class="icon-btn" title="録音を停止" aria-label="録音を停止" disabled>
+          <span class="material-icons" aria-hidden="true">stop</span>
+        </button>
         <div id="recordStatus" class="message" style="display:inline-block; margin-left:12px">録音: 停止中</div>
       </div>
 
@@ -50,10 +59,16 @@
         </div>
       </div>
 
-      <div style="margin-top:12px; border-top:1px solid #eee; padding-top:8px">
-        <button id="saveBtn">💾 設定を保存</button>
-        <button id="loadBtn">📂 設定を読み込む</button>
-        <button id="resetBtn">↩ デフォルトに戻す</button>
+      <div style="margin-top:12px; border-top:1px solid #eee; padding-top:8px; display:flex; gap:8px; align-items:center">
+        <button id="saveBtn" class="icon-btn" title="設定を保存" aria-label="設定を保存">
+          <span class="material-icons" aria-hidden="true">save</span>
+        </button>
+        <button id="loadBtn" class="icon-btn" title="設定を読み込む" aria-label="設定を読み込む">
+          <span class="material-icons" aria-hidden="true">folder_open</span>
+        </button>
+        <button id="resetBtn" class="icon-btn" title="デフォルトに戻す" aria-label="デフォルトに戻す">
+          <span class="material-icons" aria-hidden="true">restore</span>
+        </button>
       </div>
 
       <!-- 詳細設定（アコーディオン）: 下部に移動 -->

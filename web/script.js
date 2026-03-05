@@ -473,6 +473,7 @@ async function startRecording(){
     if(resp && resp.ok){
       if(recBtnEl) recBtnEl.disabled = true;
       if(recStopBtnEl) recStopBtnEl.disabled = false;
+      if(recBtnEl) recBtnEl.classList.add('recording');
       const st = document.getElementById('recordStatus');
       if(st) st.textContent = '録音: 録音中';
       showToast('録音中...');
@@ -484,10 +485,13 @@ async function startRecording(){
 
 async function stopRecording(){
   try{
+    // show immediate feedback that save is starting to avoid perceived freeze
+    showToast('保存を開始します。');
     const resp = await window.pywebview.api.stop_record();
     if(resp && resp.ok){
       if(recBtnEl) recBtnEl.disabled = false;
       if(recStopBtnEl) recStopBtnEl.disabled = true;
+      if(recBtnEl) recBtnEl.classList.remove('recording');
       const st = document.getElementById('recordStatus');
       if(st) st.textContent = '録音: 停止中';
       // Avoid showing file paths; show generic success toast
