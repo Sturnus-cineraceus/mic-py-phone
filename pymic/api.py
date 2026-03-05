@@ -3,6 +3,12 @@ import importlib
 import traceback
 
 import numpy as np
+import threading
+import queue
+import wave
+import os
+import subprocess
+import uuid
 
 from .settings_manager import SettingsManager
 
@@ -44,6 +50,12 @@ class Api:
     """Audio bypass API: list/select devices and start/stop a direct input->output passthrough."""
 
     def __init__(self):
+        # recording state
+        self._record_stream = None
+        self._record_queue = None
+        self._record_writer_thread = None
+        self._record_wav_path = None
+        self._record_target_path = None
         self.selected_input = None
         self.selected_output = None
         self.stream = None
@@ -341,6 +353,188 @@ class Api:
                 "hostapis": wasapi_list,
                 "default_device": default_dev,
             }
+        except Exception as e:
+            return {"error": str(e), "trace": traceback.format_exc()}
+
+    # --- Recording / Save dialog API ---
+    def open_save_file_dialog(self):
+        try:
+            # Use tkinter filedialog to show native save dialog
+            import tkinter as tk
+            from tkinter import filedialog
+
+            root = tk.Tk()
+            root.withdraw()
+            try:
+                # put dialog on top
+                root.call('wm', 'attributes', '.', '-topmost', True)
+            except Exception:
+                pass
+            path = filedialog.asksaveasfilename(
+                defaultextension='.mp3',
+                filetypes=[('MP3 files', '*.mp3'), ('WAV files', '*.wav'), ('All files', '*.*')],
+            )
+            try:
+                root.destroy()
+            except Exception:
+                pass
+            if not path:
+                return {"path": None}
+            return {"path": str(path)}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def start_record(self, target_path: str):
+        """Begin recording from the selected input device and stream samples to
+        a temporary WAV file in the same directory as `target_path`.
+        The final MP3 will be produced when `stop_record` is called.
+        """
+        if sd is None:
+            return {"error": "sounddevice not available"}
+        if self._record_stream is not None:
+            return {"error": "already recording"}
+        if not target_path:
+            return {"error": "no target path"}
+
+        try:
+            dev = sd.query_devices(self.selected_input)
+            samplerate = int(dev.get('default_samplerate') or 44100)
+            channels = int(dev.get('max_input_channels') or 1)
+
+            # prepare temporary wav path in same directory
+            target_path = str(target_path)
+            if not target_path.lower().endswith('.mp3'):
+                # allow user to choose .wav too; normalize final target to .mp3
+                base = os.path.splitext(target_path)[0]
+                mp3_target = base + '.mp3'
+            else:
+                mp3_target = target_path
+
+            tmp_name = f'.pymic_rec_{uuid.uuid4().hex}.wav'
+            tmp_path = os.path.join(os.path.dirname(mp3_target) or '.', tmp_name)
+
+            wf = wave.open(tmp_path, 'wb')
+            wf.setnchannels(channels)
+            wf.setsampwidth(2)  # 16-bit
+            wf.setframerate(samplerate)
+
+            q = queue.Queue()
+
+            def writer_thread_fn():
+                try:
+                    while True:
+                        item = q.get()
+                        if item is None:
+                            break
+                        # item is a numpy array (frames, channels)
+                        try:
+                            arr = np.asarray(item, dtype=np.float32)
+                            # clip and convert to int16
+                            arr = np.clip(arr, -1.0, 1.0)
+                            int16 = (arr * 32767.0).astype(np.int16)
+                            wf.writeframes(int16.tobytes())
+                        except Exception:
+                            continue
+                finally:
+                    try:
+                        wf.close()
+                    except Exception:
+                        pass
+
+            def callback(indata, frames, time, status):
+                try:
+                    # copy to avoid referencing memoryview from host
+                    q.put(indata.copy())
+                except Exception:
+                    pass
+
+            stream = sd.InputStream(
+                device=self.selected_input,
+                samplerate=samplerate,
+                channels=channels,
+                dtype='float32',
+                callback=callback,
+            )
+            # start writer thread first
+            wt = threading.Thread(target=writer_thread_fn, daemon=True)
+            wt.start()
+            stream.start()
+
+            # save state
+            self._record_stream = stream
+            self._record_queue = q
+            self._record_writer_thread = wt
+            self._record_wav_path = tmp_path
+            self._record_target_path = mp3_target
+
+            return {"ok": True}
+        except Exception as e:
+            return {"error": str(e), "trace": traceback.format_exc()}
+
+    def stop_record(self):
+        """Stop recording, convert temporary WAV -> MP3 using ffmpeg, and
+        remove the temporary file. Returns path on success.
+        """
+        if self._record_stream is None:
+            return {"error": "not recording"}
+        try:
+            try:
+                self._record_stream.stop()
+            except Exception:
+                pass
+            try:
+                self._record_stream.close()
+            except Exception:
+                pass
+
+            # signal writer thread to finish
+            try:
+                if self._record_queue is not None:
+                    self._record_queue.put(None)
+            except Exception:
+                pass
+
+            # wait for writer thread to finish
+            try:
+                if self._record_writer_thread is not None:
+                    self._record_writer_thread.join(timeout=5.0)
+            except Exception:
+                pass
+
+            tmp = self._record_wav_path
+            target = self._record_target_path
+
+            # reset recording state early to allow new recordings
+            self._record_stream = None
+            self._record_queue = None
+            self._record_writer_thread = None
+            self._record_wav_path = None
+            self._record_target_path = None
+
+            if not tmp or not os.path.exists(tmp):
+                return {"error": "temporary wav not found"}
+
+            # convert with ffmpeg (must be installed on system)
+            try:
+                cmd = [
+                    'ffmpeg', '-y', '-i', tmp, '-codec:a', 'libmp3lame', '-qscale:a', '2', target
+                ]
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if proc.returncode != 0:
+                    # conversion failed; keep tmp wav but report error
+                    return {"error": "ffmpeg conversion failed", "stderr": proc.stderr.decode(errors='replace')}
+            except FileNotFoundError:
+                return {"error": "ffmpeg not found on PATH; install ffmpeg to enable mp3 export"}
+            except Exception as e:
+                return {"error": str(e), "trace": traceback.format_exc()}
+
+            # remove temporary wav
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+
+            return {"ok": True, "path": str(target)}
         except Exception as e:
             return {"error": str(e), "trace": traceback.format_exc()}
 

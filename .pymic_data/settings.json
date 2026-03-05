@@ -1,7 +1,7 @@
 {
   "gain_db": 0.0,
   "input_device": 12,
-  "output_device": 11,
+  "output_device": 10,
   "gate": {
     "enabled": true,
     "threshold_db": -52.0,

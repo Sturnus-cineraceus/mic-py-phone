@@ -3,6 +3,11 @@ document.getElementById('stopBtn').addEventListener('click', stopBypass);
 document.getElementById('saveBtn').addEventListener('click', saveSettings);
 document.getElementById('loadBtn').addEventListener('click', loadSettings);
 document.getElementById('resetBtn').addEventListener('click', resetSettings);
+// recording buttons
+const recBtnEl = document.getElementById('recBtn');
+const recStopBtnEl = document.getElementById('recStopBtn');
+if(recBtnEl) recBtnEl.addEventListener('click', startRecording);
+if(recStopBtnEl) recStopBtnEl.addEventListener('click', stopRecording);
 
 // Bypass status element (updated on start/stop)
 let statusEl = null;
@@ -451,6 +456,46 @@ async function stopBypass(){
     document.getElementById('stopBtn').disabled = true;
     if(statusEl) statusEl.textContent = 'ステータス: 停止中';
   }catch(e){ statusEl.textContent = '停止失敗: ' + e; }
+}
+
+// Recording: show save dialog, start backend recording, then stop and finalize
+async function startRecording(){
+  try{
+    // Ask backend to show native save dialog
+    const dlg = await window.pywebview.api.open_save_file_dialog();
+    if(!dlg || dlg.path === null || typeof dlg.path === 'undefined'){
+      showToast('保存がキャンセルされました。');
+      return;
+    }
+    const path = dlg.path;
+    showToast('録音を開始します。');
+    const resp = await window.pywebview.api.start_record(path);
+    if(resp && resp.ok){
+      if(recBtnEl) recBtnEl.disabled = true;
+      if(recStopBtnEl) recStopBtnEl.disabled = false;
+      const st = document.getElementById('recordStatus');
+      if(st) st.textContent = '録音: 録音中';
+      showToast('録音中...');
+    } else {
+      showToast('録音開始に失敗しました: ' + (resp && resp.error ? resp.error : '不明なエラー'), 'error');
+    }
+  }catch(e){ showToast('録音開始に失敗しました: ' + e, 'error'); }
+}
+
+async function stopRecording(){
+  try{
+    const resp = await window.pywebview.api.stop_record();
+    if(resp && resp.ok){
+      if(recBtnEl) recBtnEl.disabled = false;
+      if(recStopBtnEl) recStopBtnEl.disabled = true;
+      const st = document.getElementById('recordStatus');
+      if(st) st.textContent = '録音: 停止中';
+      // Avoid showing file paths; show generic success toast
+      showToast('録音を保存しました。', 'success');
+    } else {
+      showToast('録音停止に失敗しました: ' + (resp && resp.error ? resp.error : '不明なエラー'), 'error');
+    }
+  }catch(e){ showToast('録音停止に失敗しました: ' + e, 'error'); }
 }
 
 // Re-initialize all controls from backend state (used after load/reset)

@@ -116,3 +116,34 @@ python -m pip install pedalboard
 2. ノイズリダクション強さを `0.85`〜`1.0` で調整
 3. ゲート閾値を `-50`〜`-35` dB 目安で調整
 4. コンプレッサーのメイクアップを上げすぎない（ノイズ再増幅を防ぐ）
+
+---
+
+## 開発時の ffmpeg 取り扱い（同梱の手順）
+
+このプロジェクトではリポジトリに ffmpeg バイナリを含めません。開発中や配布ビルドで mp3 出力を有効にするため、ビルド時に ffmpeg をダウンロードして同梱する仕組みを用意しています。
+
+推奨ワークフロー:
+
+- 自動化（推奨）: リポジトリルートで `python build_dist.py` を実行すると、`build/ffmpeg` に ffmpeg をダウンロードして展開し、PyInstaller を呼び出して ffmpeg をビルド成果物に同梱します。
+
+	実行例:
+
+	```powershell
+	python build_dist.py
+	```
+
+- 手動（開発用）: 既に ffmpeg を入手している場合は、プロジェクト内の `build/ffmpeg/bin/` に `ffmpeg.exe` を配置してください（Windows）。スクリプトは `build/ffmpeg/bin` にある ffmpeg を検出します。
+
+	- ダウンロード先の一例（Windows）: https://www.gyan.dev/ffmpeg/builds/
+	- ZIP を展開し、中の `ffmpeg.exe` を `build/ffmpeg/bin/` にコピーします。
+
+代替: システム全体の PATH に `ffmpeg` が含まれていれば、何も配置する必要はありません。
+
+注意点:
+
+- ビルドスクリプトはインターネット接続を必要とします（自動ダウンロード時）。
+- `ffmpeg` の配布ライセンスを確認の上で利用してください。
+- リポジトリにバイナリを含めないため、`build/ffmpeg` を `.gitignore` に追加することを推奨します（まだ `.gitignore` を使っていない場合は、任意で追加してください）。
+
+問題があれば手順を調整しますので教えてください。
