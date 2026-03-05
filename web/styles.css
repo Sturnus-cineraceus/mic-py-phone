@@ -26,6 +26,24 @@ body{
 button{background:var(--accent);color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
 .message{margin-top:12px;padding:10px;background:#f3f4f6;border-radius:8px}
 
+/* Device select styling: larger, consistent width and focus styles */
+.device-selects{margin-top:8px; display:flex; flex-direction:column; gap:8px}
+.device-label{display:block; font-weight:700; color:var(--text);}
+.device-select{width:100%; padding:10px 12px; font-size:1rem; border-radius:10px; border:1px solid #e6e9ef; background:#fff; box-shadow:0 1px 0 rgba(16,24,40,0.02); appearance:none; -webkit-appearance:none; cursor:pointer}
+.device-select:focus{outline:2px solid rgba(37,99,235,0.18); border-color:rgba(37,99,235,0.35); box-shadow:0 8px 20px rgba(37,99,235,0.06)}
+.primary-select{font-size:1.03rem; padding:12px 14px; border-radius:12px; border-width:1.5px}
+
+/* Make select arrow visible and aligned on wider controls */
+.device-select{background-image:linear-gradient(45deg, transparent 50%, var(--text) 50%), linear-gradient(135deg, var(--text) 50%, transparent 50%); background-position:calc(100% - 18px) calc(50% - 6px), calc(100% - 12px) calc(50% - 6px); background-size:6px 6px,6px 6px; background-repeat:no-repeat}
+
+@media(min-width:720px){
+  .device-selects{flex-direction:row; gap:12px}
+  .device-label{flex:1}
+  .device-label:first-child{max-width:55%}
+  .device-label:last-child{max-width:45%}
+  .device-select{width:100%}
+}
+
 /* No dark-mode variants: keep CSS variables minimal and focused on light theme */
 
 /* Accordion (audio console) */
