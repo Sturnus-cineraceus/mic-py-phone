@@ -1,8 +1,11 @@
 :root{
-  --bg:#f6f8fa;
-  --card:#ffffff;
-  --text:#111827;
-  --accent:#2563eb;
+  --bg: #f4f5f7; /* page background: light gray */
+  --card: #ffffff; /* card background */
+  --text: #111827; /* primary text (dark) */
+  --accent: #6b7280; /* accent (gray) for buttons */
+  --muted: #f1f3f5; /* accordion header background (soft gray) */
+  --panel: #ffffff; /* accordion panel background */
+  --muted-border: rgba(15,23,42,0.06);
 }
 body{
   margin:0;
@@ -21,35 +24,31 @@ body{
 .card{background:var(--card);padding:20px;border-radius:12px;box-shadow:0 6px 18px rgba(16,24,40,0.08)}
 .controls{margin-top:12px}
 button{background:var(--accent);color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
-.message{margin-top:12px;padding:10px;background:#eef2ff;border-radius:8px}
+.message{margin-top:12px;padding:10px;background:#f3f4f6;border-radius:8px}
 
-body.dark{
-  --bg:#0b1220;
-  --card:#0f1724;
-  --text:#e6eef8;
-  --accent:#4f46e5;
-}
+/* No dark-mode variants: keep CSS variables minimal and focused on light theme */
 
 /* Accordion (audio console) */
 .accordion{margin-top:8px}
 .accordion-header{
   width:100%;
   text-align:left;
-  background:transparent;
-  border:1px solid #e6eef8;
-  padding:8px 12px;
+  background:var(--muted);
+  color:var(--text);
+  border:1px solid var(--muted-border);
+  padding:10px 14px;
   border-radius:8px;
-  font-weight:600;
+  font-weight:700;
   cursor:pointer;
   display:flex;
   justify-content:space-between;
   align-items:center;
 }
-.accordion-header:hover{background:rgba(0,0,0,0.02)}
-.accordion-panel{margin-top:10px; transition:all 200ms ease;}
+.accordion-header:hover{background:#e9ecef}
+.accordion-panel{margin-top:10px; transition:all 200ms ease; background:var(--panel); padding:14px; border-radius:8px; border:1px solid var(--muted-border)}
 .accordion-header:focus{outline:2px solid rgba(37,99,235,0.2)}
 
-body.dark .accordion-header{border-color:rgba(255,255,255,0.06)}
+/* removed dark mode styles to avoid duplicate/unused variables */
 
 /* Toast notifications */
 .toast-area{
