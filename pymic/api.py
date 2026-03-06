@@ -9,6 +9,7 @@ import wave
 import os
 import subprocess
 import uuid
+
 try:
     import webrtcvad
 except Exception:
@@ -47,8 +48,7 @@ except Exception:
         PBHighpassFilter = None
 
 HAS_PEDALBOARD = all(
-    x is not None
-    for x in (Pedalboard, PBNoiseGate, PBCompressor, PBHighpassFilter)
+    x is not None for x in (Pedalboard, PBNoiseGate, PBCompressor, PBHighpassFilter)
 )
 
 
@@ -178,7 +178,9 @@ class Api:
         if isinstance(gate, dict):
             self.gate_enabled = bool(gate.get("enabled", self.gate_enabled))
             try:
-                self.gate_threshold_db = float(gate.get("threshold_db", self.gate_threshold_db))
+                self.gate_threshold_db = float(
+                    gate.get("threshold_db", self.gate_threshold_db)
+                )
             except Exception:
                 pass
             try:
@@ -186,7 +188,9 @@ class Api:
             except Exception:
                 pass
             try:
-                self.gate_release_ms = float(gate.get("release_ms", self.gate_release_ms))
+                self.gate_release_ms = float(
+                    gate.get("release_ms", self.gate_release_ms)
+                )
             except Exception:
                 pass
         hpf = settings.get("hpf", {})
@@ -207,7 +211,9 @@ class Api:
         if isinstance(comp, dict):
             self.comp_enabled = bool(comp.get("enabled", self.comp_enabled))
             try:
-                self.comp_threshold_db = float(comp.get("threshold_db", self.comp_threshold_db))
+                self.comp_threshold_db = float(
+                    comp.get("threshold_db", self.comp_threshold_db)
+                )
             except Exception:
                 pass
             try:
@@ -219,7 +225,9 @@ class Api:
             except Exception:
                 pass
             try:
-                self.comp_release_ms = float(comp.get("release_ms", self.comp_release_ms))
+                self.comp_release_ms = float(
+                    comp.get("release_ms", self.comp_release_ms)
+                )
             except Exception:
                 pass
             try:
@@ -230,11 +238,15 @@ class Api:
         if isinstance(dehiss, dict):
             self.dehiss_enabled = bool(dehiss.get("enabled", self.dehiss_enabled))
             try:
-                self.dehiss_strength = float(dehiss.get("strength", self.dehiss_strength))
+                self.dehiss_strength = float(
+                    dehiss.get("strength", self.dehiss_strength)
+                )
             except Exception:
                 pass
             try:
-                self.dehiss_threshold_db = float(dehiss.get("threshold_db", self.dehiss_threshold_db))
+                self.dehiss_threshold_db = float(
+                    dehiss.get("threshold_db", self.dehiss_threshold_db)
+                )
             except Exception:
                 pass
             try:
@@ -385,12 +397,16 @@ class Api:
             root.withdraw()
             try:
                 # put dialog on top
-                root.call('wm', 'attributes', '.', '-topmost', True)
+                root.call("wm", "attributes", ".", "-topmost", True)
             except Exception:
                 pass
             path = filedialog.asksaveasfilename(
-                defaultextension='.mp3',
-                filetypes=[('MP3 files', '*.mp3'), ('WAV files', '*.wav'), ('All files', '*.*')],
+                defaultextension=".mp3",
+                filetypes=[
+                    ("MP3 files", "*.mp3"),
+                    ("WAV files", "*.wav"),
+                    ("All files", "*.*"),
+                ],
             )
             try:
                 root.destroy()
@@ -416,12 +432,12 @@ class Api:
 
         try:
             dev = sd.query_devices(self.selected_input)
-            samplerate = int(dev.get('default_samplerate') or 44100)
-            channels = int(dev.get('max_input_channels') or 1)
+            samplerate = int(dev.get("default_samplerate") or 44100)
+            channels = int(dev.get("max_input_channels") or 1)
 
             # register recorder sink which will create a temporary wav and write frames
             resp = self._recorder.start(target_path, samplerate, channels)
-            if resp.get('error'):
+            if resp.get("error"):
                 return resp
 
             def callback(indata, frames, time, status):
@@ -431,7 +447,9 @@ class Api:
                         a = np.asarray(arr, dtype=np.float32)
                         if a.ndim == 1:
                             a = a.reshape(-1, 1)
-                        self.last_input_rms = float(np.sqrt(np.mean(np.square(a.astype(np.float64)))))
+                        self.last_input_rms = float(
+                            np.sqrt(np.mean(np.square(a.astype(np.float64))))
+                        )
                     except Exception:
                         pass
                     try:
@@ -446,7 +464,7 @@ class Api:
                     device=self.selected_input,
                     samplerate=samplerate,
                     channels=channels,
-                    dtype='float32',
+                    dtype="float32",
                     callback=callback,
                 )
                 stream.start()
@@ -466,12 +484,12 @@ class Api:
             had_record_stream = self._record_stream is not None
             try:
                 if self._record_stream is not None:
-                    if hasattr(self._record_stream, 'stop'):
+                    if hasattr(self._record_stream, "stop"):
                         try:
                             self._record_stream.stop()
                         except Exception:
                             pass
-                    if hasattr(self._record_stream, 'close'):
+                    if hasattr(self._record_stream, "close"):
                         try:
                             self._record_stream.close()
                         except Exception:
@@ -584,7 +602,7 @@ class Api:
                 def _vad_sink(frames_np: np.ndarray):
                     try:
                         # closure-local state
-                        if not hasattr(_vad_sink, 'buf'):
+                        if not hasattr(_vad_sink, "buf"):
                             _vad_sink.buf = bytearray()
                             _vad_sink.speech_buf = bytearray()
                             _vad_sink.in_speech = False
@@ -596,7 +614,12 @@ class Api:
                                 sr = int(self._current_samplerate or 16000)
                             except Exception:
                                 sr = 16000
-                            if webrtcvad is not None and sr in (8000, 16000, 32000, 48000):
+                            if webrtcvad is not None and sr in (
+                                8000,
+                                16000,
+                                32000,
+                                48000,
+                            ):
                                 try:
                                     _vad_sink.vad = webrtcvad.Vad(2)
                                 except Exception:
@@ -633,8 +656,17 @@ class Api:
                             else:
                                 try:
                                     # fallback: energy-based decision
-                                    tmp = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32767.0
-                                    rms = float(np.sqrt(np.mean(np.square(tmp.astype(np.float64)))))
+                                    tmp = (
+                                        np.frombuffer(frame, dtype=np.int16).astype(
+                                            np.float32
+                                        )
+                                        / 32767.0
+                                    )
+                                    rms = float(
+                                        np.sqrt(
+                                            np.mean(np.square(tmp.astype(np.float64)))
+                                        )
+                                    )
                                     is_speech = rms > 1e-4
                                 except Exception:
                                     is_speech = False
@@ -646,14 +678,23 @@ class Api:
                             else:
                                 if _vad_sink.in_speech:
                                     _vad_sink.silence_ms += _vad_sink.frame_ms
-                                    if _vad_sink.silence_ms >= int(self.vad_silence_ms or 500):
+                                    if _vad_sink.silence_ms >= int(
+                                        self.vad_silence_ms or 500
+                                    ):
                                         # utterance ended — send to transcription placeholder
                                         try:
                                             # convert speech_buf to numpy float array for downstream use
                                             b = bytes(_vad_sink.speech_buf)
-                                            arr16 = np.frombuffer(b, dtype=np.int16).astype(np.float32) / 32767.0
+                                            arr16 = (
+                                                np.frombuffer(b, dtype=np.int16).astype(
+                                                    np.float32
+                                                )
+                                                / 32767.0
+                                            )
                                             # Here we would call Whisper or other ASR; for now print debug info
-                                            print(f"[VAD] Utterance end, samples={arr16.size}, sr={sr}")
+                                            print(
+                                                f"[VAD] Utterance end, samples={arr16.size}, sr={sr}"
+                                            )
                                         except Exception:
                                             pass
                                         _vad_sink.speech_buf = bytearray()
@@ -666,8 +707,8 @@ class Api:
                         pass
 
                 resp = self.register_sink(_vad_sink)
-                if resp and resp.get('ok'):
-                    self._transcribe_sink_id = resp.get('id')
+                if resp and resp.get("ok"):
+                    self._transcribe_sink_id = resp.get("id")
             elif (not self.transcribe_enabled) and self._transcribe_sink_id is not None:
                 try:
                     self.unregister_sink(self._transcribe_sink_id)
@@ -1058,7 +1099,11 @@ class Api:
             def callback(indata, outdata, frames, time, status):
                 nonlocal hpf_enabled, hpf_cutoff_prev, b0, b1, b2, a1, a2
                 nonlocal hpf_x1, hpf_x2, hpf_y1, hpf_y2
-                nonlocal alpha_attack, alpha_release, gate_attack_prev, gate_release_prev
+                nonlocal \
+                    alpha_attack, \
+                    alpha_release, \
+                    gate_attack_prev, \
+                    gate_release_prev
                 nonlocal comp_env, comp_gain_sm
                 nonlocal dehiss_lp_prev, dehiss_env, dehiss_gain_sm
                 if status:
@@ -1080,7 +1125,9 @@ class Api:
 
                     # update input RMS (before processing)
                     try:
-                        self.last_input_rms = float(np.sqrt(np.mean(np.square(fdata.astype(np.float64)))))
+                        self.last_input_rms = float(
+                            np.sqrt(np.mean(np.square(fdata.astype(np.float64))))
+                        )
                     except Exception:
                         pass
 
@@ -1114,13 +1161,10 @@ class Api:
                         # keep original data if noise reduction fails
                         pass
 
-                    use_pedalboard = (
-                        HAS_PEDALBOARD
-                        and (
-                            bool(self.hpf_enabled)
-                            or bool(self.gate_enabled)
-                            or bool(self.comp_enabled)
-                        )
+                    use_pedalboard = HAS_PEDALBOARD and (
+                        bool(self.hpf_enabled)
+                        or bool(self.gate_enabled)
+                        or bool(self.comp_enabled)
                     )
 
                     if use_pedalboard and fdata.size > 0:
@@ -1160,13 +1204,20 @@ class Api:
                             pb_out = board(pb_in, samplerate)
                             pb_out = np.asarray(pb_out, dtype=np.float32)
                             fdata = pb_out.T
-                            if bool(self.comp_enabled) and float(self.comp_makeup_db) != 0.0:
+                            if (
+                                bool(self.comp_enabled)
+                                and float(self.comp_makeup_db) != 0.0
+                            ):
                                 fdata = fdata * float(
                                     10.0 ** (float(self.comp_makeup_db) / 20.0)
                                 )
 
                     # apply compressor (with soft-knee curve and smoothed gain)
-                    if (not use_pedalboard) and bool(self.comp_enabled) and fdata.size > 0:
+                    if (
+                        (not use_pedalboard)
+                        and bool(self.comp_enabled)
+                        and fdata.size > 0
+                    ):
                         thr = float(self.comp_threshold_db)
                         ratio = max(1.0, float(self.comp_ratio))
                         attack_ms = max(0.1, float(self.comp_attack_ms))
@@ -1190,17 +1241,29 @@ class Api:
                             if (2.0 * (x_db - threshold_db)) < -knee_v:
                                 return x_db
                             if abs(2.0 * (x_db - threshold_db)) <= knee_v:
-                                return x_db + ((1.0 / ratio_v - 1.0) * ((x_db - threshold_db + knee_v / 2.0) ** 2) / (2.0 * knee_v))
+                                return x_db + (
+                                    (1.0 / ratio_v - 1.0)
+                                    * ((x_db - threshold_db + knee_v / 2.0) ** 2)
+                                    / (2.0 * knee_v)
+                                )
                             return threshold_db + (x_db - threshold_db) / ratio_v
 
                         out_comp = np.empty_like(fdata)
                         for i in range(fdata.shape[0]):
                             s = fdata[i, :]
-                            level = float(np.sqrt(np.mean(np.square(s.astype(np.float64)))))
+                            level = float(
+                                np.sqrt(np.mean(np.square(s.astype(np.float64))))
+                            )
                             if level > comp_env:
-                                comp_env = alpha_comp_attack * comp_env + (1.0 - alpha_comp_attack) * level
+                                comp_env = (
+                                    alpha_comp_attack * comp_env
+                                    + (1.0 - alpha_comp_attack) * level
+                                )
                             else:
-                                comp_env = alpha_comp_release * comp_env + (1.0 - alpha_comp_release) * level
+                                comp_env = (
+                                    alpha_comp_release * comp_env
+                                    + (1.0 - alpha_comp_release) * level
+                                )
 
                             in_db = 20.0 * math.log10(comp_env + 1e-12)
                             out_db = _compress_db(in_db, thr, ratio, knee_db)
@@ -1211,7 +1274,9 @@ class Api:
                                 alpha_g = alpha_comp_attack
                             else:
                                 alpha_g = alpha_comp_release
-                            comp_gain_sm = alpha_g * comp_gain_sm + (1.0 - alpha_g) * target_gain
+                            comp_gain_sm = (
+                                alpha_g * comp_gain_sm + (1.0 - alpha_g) * target_gain
+                            )
 
                             out_comp[i, :] = s * comp_gain_sm * makeup
 
@@ -1223,8 +1288,10 @@ class Api:
                     # apply HPF per-sample if enabled (biquad). Recompute coeffs if cutoff changed.
                     cur_hpf_enabled = bool(self.hpf_enabled)
                     cur_cutoff = float(self.hpf_cutoff_hz)
-                    if (not use_pedalboard) and cur_hpf_enabled and (
-                        not hpf_enabled or hpf_cutoff_prev != cur_cutoff
+                    if (
+                        (not use_pedalboard)
+                        and cur_hpf_enabled
+                        and (not hpf_enabled or hpf_cutoff_prev != cur_cutoff)
                     ):
                         # compute biquad HPF coefficients (RBJ cookbook), Q=0.707
                         fs = float(samplerate)
@@ -1334,18 +1401,18 @@ class Api:
                         gain_sm = alpha_g * gain_sm + (1.0 - alpha_g) * target_gain
                         # apply smoothed gain
                         if gain_sm <= 0.001:
-                                # if muted, still dispatch silence to sinks if active
-                                try:
-                                    outdata.fill(0)
-                                    if self._sink_mgr and self._sink_mgr.has_sinks():
-                                        zeros = np.zeros_like(fdata)
-                                        try:
-                                            self._dispatch_sinks(zeros)
-                                        except Exception:
-                                            pass
-                                except Exception:
-                                    pass
-                                return
+                            # if muted, still dispatch silence to sinks if active
+                            try:
+                                outdata.fill(0)
+                                if self._sink_mgr and self._sink_mgr.has_sinks():
+                                    zeros = np.zeros_like(fdata)
+                                    try:
+                                        self._dispatch_sinks(zeros)
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                pass
+                            return
                         fdata = fdata * float(gain_sm)
 
                     # post stage: explicit gain then de-hiss to reduce amplified white noise
@@ -1356,7 +1423,9 @@ class Api:
                     if bool(self.dehiss_enabled) and fdata.size > 0:
                         _ensure_dehiss_state()
                         fs = float(samplerate)
-                        cutoff = max(500.0, min(float(self.dehiss_lpf_hz), fs / 2.0 - 50.0))
+                        cutoff = max(
+                            500.0, min(float(self.dehiss_lpf_hz), fs / 2.0 - 50.0)
+                        )
                         alpha_lp = 1.0 - math.exp(-2.0 * math.pi * cutoff / fs)
                         nch = min(fdata.shape[1], channels)
 
@@ -1370,9 +1439,15 @@ class Api:
                                 fdata[i, ch] = y
 
                         # downward expander when level is near noise floor
-                        rms_post = float(np.sqrt(np.mean(np.square(fdata.astype(np.float64)))))
-                        alpha_env_attack = math.exp(-1.0 / (max(fs * (8.0 / 1000.0), 1.0)))
-                        alpha_env_release = math.exp(-1.0 / (max(fs * (140.0 / 1000.0), 1.0)))
+                        rms_post = float(
+                            np.sqrt(np.mean(np.square(fdata.astype(np.float64))))
+                        )
+                        alpha_env_attack = math.exp(
+                            -1.0 / (max(fs * (8.0 / 1000.0), 1.0))
+                        )
+                        alpha_env_release = math.exp(
+                            -1.0 / (max(fs * (140.0 / 1000.0), 1.0))
+                        )
                         if rms_post > dehiss_env:
                             dehiss_env = (
                                 alpha_env_attack * dehiss_env
@@ -1384,7 +1459,9 @@ class Api:
                                 + (1.0 - alpha_env_release) * rms_post
                             )
 
-                        thr_lin = float(10.0 ** (float(self.dehiss_threshold_db) / 20.0))
+                        thr_lin = float(
+                            10.0 ** (float(self.dehiss_threshold_db) / 20.0)
+                        )
                         strength = max(0.0, min(1.0, float(self.dehiss_strength)))
                         if dehiss_env >= thr_lin:
                             target_post_gain = 1.0
@@ -1392,10 +1469,16 @@ class Api:
                             rel = dehiss_env / max(thr_lin, 1e-9)
                             floor_gain = max(0.15, 1.0 - 0.9 * strength)
                             target_post_gain = floor_gain + (1.0 - floor_gain) * rel
-                            target_post_gain = max(floor_gain, min(1.0, target_post_gain))
+                            target_post_gain = max(
+                                floor_gain, min(1.0, target_post_gain)
+                            )
 
-                        alpha_post_open = math.exp(-1.0 / (max(fs * (8.0 / 1000.0), 1.0)))
-                        alpha_post_close = math.exp(-1.0 / (max(fs * (220.0 / 1000.0), 1.0)))
+                        alpha_post_open = math.exp(
+                            -1.0 / (max(fs * (8.0 / 1000.0), 1.0))
+                        )
+                        alpha_post_close = math.exp(
+                            -1.0 / (max(fs * (220.0 / 1000.0), 1.0))
+                        )
                         if target_post_gain > dehiss_gain_sm:
                             alpha_pg = alpha_post_open
                         else:
@@ -1408,13 +1491,19 @@ class Api:
 
                     # update output RMS (after processing)
                     try:
-                        self.last_output_rms = float(np.sqrt(np.mean(np.square(fdata.astype(np.float64)))))
+                        self.last_output_rms = float(
+                            np.sqrt(np.mean(np.square(fdata.astype(np.float64))))
+                        )
                     except Exception:
                         pass
 
                     # dispatch processed frames to all sinks (recorder, others)
                     try:
-                        if self._sink_mgr and self._sink_mgr.has_sinks() and fdata.size > 0:
+                        if (
+                            self._sink_mgr
+                            and self._sink_mgr.has_sinks()
+                            and fdata.size > 0
+                        ):
                             try:
                                 self._dispatch_sinks(fdata)
                             except Exception:

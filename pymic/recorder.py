@@ -31,16 +31,16 @@ class Recorder:
 
         try:
             target_path = str(target_path)
-            if not target_path.lower().endswith('.mp3'):
+            if not target_path.lower().endswith(".mp3"):
                 base = os.path.splitext(target_path)[0]
-                mp3_target = base + '.mp3'
+                mp3_target = base + ".mp3"
             else:
                 mp3_target = target_path
 
-            tmp_name = f'.pymic_rec_{uuid.uuid4().hex}.wav'
-            tmp_path = os.path.join(os.path.dirname(mp3_target) or '.', tmp_name)
+            tmp_name = f".pymic_rec_{uuid.uuid4().hex}.wav"
+            tmp_path = os.path.join(os.path.dirname(mp3_target) or ".", tmp_name)
 
-            wf = wave.open(tmp_path, 'wb')
+            wf = wave.open(tmp_path, "wb")
             wf.setnchannels(int(channels or 1))
             wf.setsampwidth(2)
             wf.setframerate(int(samplerate or 44100))
@@ -62,14 +62,14 @@ class Recorder:
                     pass
 
             resp = self.sink_mgr.register(_sink)
-            if resp.get('error') or not resp.get('id'):
+            if resp.get("error") or not resp.get("id"):
                 try:
                     wf.close()
                 except Exception:
                     pass
                 return {"error": "failed to register recorder sink"}
 
-            self._sid = resp.get('id')
+            self._sid = resp.get("id")
             self._wf = wf
             self._tmp_path = tmp_path
             self._target_path = mp3_target
@@ -112,13 +112,28 @@ class Recorder:
 
             try:
                 cmd = [
-                    'ffmpeg', '-y', '-i', tmp, '-codec:a', 'libmp3lame', '-qscale:a', '2', target
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    tmp,
+                    "-codec:a",
+                    "libmp3lame",
+                    "-qscale:a",
+                    "2",
+                    target,
                 ]
-                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                proc = subprocess.run(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
                 if proc.returncode != 0:
-                    return {"error": "ffmpeg conversion failed", "stderr": proc.stderr.decode(errors='replace')}
+                    return {
+                        "error": "ffmpeg conversion failed",
+                        "stderr": proc.stderr.decode(errors="replace"),
+                    }
             except FileNotFoundError:
-                return {"error": "ffmpeg not found on PATH; install ffmpeg to enable mp3 export"}
+                return {
+                    "error": "ffmpeg not found on PATH; install ffmpeg to enable mp3 export"
+                }
             except Exception as e:
                 return {"error": str(e)}
 

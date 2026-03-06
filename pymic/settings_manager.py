@@ -13,6 +13,7 @@ from pathlib import Path
 try:
     from appdirs import user_data_dir
 except ImportError:  # pragma: no cover – appdirs not installed
+
     def user_data_dir(appname: str, appauthor: str) -> str:  # type: ignore[misc]
         """Minimal fallback: use a .pymic directory next to this file."""
         return str(Path(__file__).parent.parent / ".pymic_data")

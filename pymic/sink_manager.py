@@ -38,7 +38,12 @@ class SinkManager:
 
                 th = threading.Thread(target=_worker, daemon=True)
                 th.start()
-                self._sinks[sid] = {"fn": sink_callable, "queue": q, "thread": th, "stop": stop_ev}
+                self._sinks[sid] = {
+                    "fn": sink_callable,
+                    "queue": q,
+                    "thread": th,
+                    "stop": stop_ev,
+                }
             return {"ok": True, "id": sid}
         except Exception as e:
             return {"error": str(e)}

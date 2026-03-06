@@ -27,8 +27,8 @@ def download_and_extract_ffmpeg(dest_dir: str, url: str = None):
     os.close(tmpfd)
     try:
         print(f"Downloading ffmpeg from {url} ...")
-        with urlopen(url) as resp, open(tmpname, 'wb') as out:
-            total = resp.getheader('Content-Length')
+        with urlopen(url) as resp, open(tmpname, "wb") as out:
+            total = resp.getheader("Content-Length")
             try:
                 total = int(total) if total is not None else None
             except Exception:
@@ -44,13 +44,20 @@ def download_and_extract_ffmpeg(dest_dir: str, url: str = None):
                 downloaded += len(chunk)
                 if total:
                     pct = downloaded / total * 100.0
-                    print(f"\rDownloaded {downloaded/1024/1024:.2f} MB / {total/1024/1024:.2f} MB ({pct:5.1f}%)", end='')
+                    print(
+                        f"\rDownloaded {downloaded / 1024 / 1024:.2f} MB / {total / 1024 / 1024:.2f} MB ({pct:5.1f}%)",
+                        end="",
+                    )
                 else:
-                    print(f"\rDownloaded {downloaded/1024/1024:.2f} MB", end='')
-            print('\nDownload complete, extracting...')
-        with zipfile.ZipFile(tmpname, 'r') as z:
+                    print(f"\rDownloaded {downloaded / 1024 / 1024:.2f} MB", end="")
+            print("\nDownload complete, extracting...")
+        with zipfile.ZipFile(tmpname, "r") as z:
             # Find ffmpeg.exe or ffmpeg in archive and extract
-            candidates = [n for n in z.namelist() if n.lower().endswith('ffmpeg.exe') or n.endswith('/ffmpeg')]
+            candidates = [
+                n
+                for n in z.namelist()
+                if n.lower().endswith("ffmpeg.exe") or n.endswith("/ffmpeg")
+            ]
             if not candidates:
                 # fallback: extract all and search
                 z.extractall(dest_dir)
@@ -60,7 +67,7 @@ def download_and_extract_ffmpeg(dest_dir: str, url: str = None):
                     # extract the file
                     target_name = os.path.basename(cand)
                     out_path = os.path.join(bin_dir, target_name)
-                    with z.open(cand) as src, open(out_path, 'wb') as dst:
+                    with z.open(cand) as src, open(out_path, "wb") as dst:
                         shutil.copyfileobj(src, dst)
                     # ensure executable bit on non-windows
                     try:
@@ -72,10 +79,10 @@ def download_and_extract_ffmpeg(dest_dir: str, url: str = None):
         ffpath = None
         for root, dirs, files in os.walk(dest_dir):
             for f in files:
-                if f.lower().startswith('ffmpeg'):
+                if f.lower().startswith("ffmpeg"):
                     candidate = os.path.join(root, f)
                     # prefer exe on windows
-                    if sys.platform.startswith('win') and f.lower().endswith('.exe'):
+                    if sys.platform.startswith("win") and f.lower().endswith(".exe"):
                         ffpath = candidate
                         break
                     if ffpath is None:
@@ -84,7 +91,7 @@ def download_and_extract_ffmpeg(dest_dir: str, url: str = None):
                 break
 
         if ffpath is None:
-            raise RuntimeError('ffmpeg binary not found inside downloaded archive')
+            raise RuntimeError("ffmpeg binary not found inside downloaded archive")
 
         # copy to bin_dir if not already there
         final = os.path.join(bin_dir, os.path.basename(ffpath))
@@ -103,6 +110,6 @@ def download_and_extract_ffmpeg(dest_dir: str, url: str = None):
             pass
 
 
-if __name__ == '__main__':
-    out = download_and_extract_ffmpeg('build/ffmpeg')
-    print('ffmpeg extracted to', out)
+if __name__ == "__main__":
+    out = download_and_extract_ffmpeg("build/ffmpeg")
+    print("ffmpeg extracted to", out)
