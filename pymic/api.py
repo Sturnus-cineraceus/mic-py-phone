@@ -1,6 +1,7 @@
 import math
 import importlib
 import traceback
+import logging
 
 # numpy usage moved to pipeline/recorder/bypass_controller; avoid importing here
 
@@ -74,6 +75,7 @@ class Api:
         # Settings persistence
         self._settings_manager = SettingsManager()
         self._apply_settings(self._settings_manager.load())
+        self._logger = logging.getLogger(__name__)
         # current stream samplerate (set when bypass starts)
         self._current_samplerate = None
         # injected pipeline instance (BypassPipeline)
@@ -225,6 +227,11 @@ class Api:
 
     def _apply_settings(self, settings: dict):
         try:
+            try:
+                if getattr(self, "_logger", None) is not None:
+                    self._logger.info("Applying settings from load/reset: %s", str(settings))
+            except Exception:
+                pass
             if not isinstance(settings, dict):
                 return
             if "gain_db" in settings:
@@ -301,28 +308,30 @@ class Api:
     def _maybe_apply_pipeline_settings(self):
         """If a pipeline exists, apply the current settings snapshot to it."""
         try:
+            # Collect snapshot once and log it for diagnostics
+            settings = self._collect_settings()
+            self._logger.info("Applying settings snapshot to pipeline")
+
             # First try Api-level pipeline (if present)
             pipeline = getattr(self, "_pipeline", None)
             if pipeline is not None:
                 try:
-                    pipeline.apply_settings(self._collect_settings())
+                    pipeline.apply_settings(settings)
                 except Exception:
-                    pass
+                    self._logger.exception("Failed to apply settings to API pipeline")
             else:
                 # If bypass controller manages the active pipeline, delegate to it
-                try:
-                    bypass_controller = getattr(self, "_bypass_controller", None)
-                    if bypass_controller is not None:
-                        try:
-                            bypass_controller.apply_settings(self._collect_settings())
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
+                bypass_controller = getattr(self, "_bypass_controller", None)
+                if bypass_controller is not None:
+                    try:
+                        bypass_controller.apply_settings(settings)
+                    except Exception:
+                        self._logger.exception("Failed to apply settings to bypass controller")
         except Exception:
             pass
 
     def get_audio_devices(self):
+        self._logger.info("API: get_audio_devices called")
         return audio_device.get_audio_devices()
 
     # --- Recording / Save dialog API ---
@@ -371,6 +380,13 @@ class Api:
             dev = audio_device.query_device(self.selected_input)
             samplerate = int(dev.get("default_samplerate") or 44100)
             channels = int(dev.get("max_input_channels") or 1)
+            self._logger.info(
+                "API: start_record target=%s input=%s sr=%s ch=%s",
+                str(target_path),
+                str(self.selected_input),
+                samplerate,
+                channels,
+            )
             return self._recorder.start(target_path, samplerate, channels)
         except Exception as e:
             return {"error": str(e), "trace": traceback.format_exc()}
@@ -398,9 +414,11 @@ class Api:
             self._record_stream = None
 
             # stop recorder (unregister sink, convert file)
+            self._logger.info("API: stop_record called")
             try:
                 resp = self._recorder.stop()
             except Exception as e:
+                self._logger.exception("API: error stopping recorder")
                 resp = {"error": str(e)}
 
             # clear input level if we stopped a dedicated input stream
@@ -418,6 +436,7 @@ class Api:
         try:
             idx = int(index)
             self.selected_input = idx
+            self._logger.info("API: set_input_device %s", idx)
             return {"selected_input": idx}
         except Exception as e:
             return {"error": "invalid index", "detail": str(e)}
@@ -426,6 +445,7 @@ class Api:
         try:
             idx = int(index)
             self.selected_output = idx
+            self._logger.info("API: set_output_device %s", idx)
             return {"selected_output": idx}
         except Exception as e:
             return {"error": "invalid index", "detail": str(e)}
@@ -845,6 +865,11 @@ class Api:
             except Exception:
                 pass
 
+            self._logger.info(
+                "API: start_bypass input=%s output=%s",
+                str(self.selected_input),
+                str(self.selected_output),
+            )
             bypass_controller = getattr(self, "_bypass_controller", None)
             if bypass_controller is not None:
                 return bypass_controller.start(
@@ -859,6 +884,7 @@ class Api:
 
     def stop_bypass(self):
         try:
+            self._logger.info("API: stop_bypass requested")
             bypass_controller = getattr(self, "_bypass_controller", None)
             if bypass_controller is not None:
                 return bypass_controller.stop()

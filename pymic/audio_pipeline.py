@@ -12,9 +12,12 @@ import argparse
 import math
 import sys
 import threading
+import logging
 
 import numpy as np
 import sounddevice as sd
+
+_logger = logging.getLogger(__name__)
 
 
 class NoiseGate:
@@ -90,8 +93,8 @@ def run_stream(
     stop_event = threading.Event()
 
     def callback(indata, outdata, frames, time_info, status):
-        if status:
-            print(status, file=sys.stderr)
+            if status:
+                _logger.warning("Stream callback status: %s", status)
         # ensure float32
         data = indata.copy().astype(np.float32)
         # apply boost
@@ -107,8 +110,13 @@ def run_stream(
         else:
             outdata[:] = processed
 
-    print(
-        f"Starting audio: gain={gain_db} dB ({gain_mul:.3f}x), gate threshold={threshold_db} dB, sr={samplerate}, channels={channels}"
+    _logger.info(
+        "Starting audio: gain=%s dB (%.3fx), gate threshold=%s dB, sr=%s, channels=%s",
+        gain_db,
+        gain_mul,
+        threshold_db,
+        samplerate,
+        channels,
     )
 
     try:
@@ -120,13 +128,13 @@ def run_stream(
             callback=callback,
             device=device,
         ):
-            print("Press Ctrl+C to stop")
+            _logger.info("Press Ctrl+C to stop")
             while not stop_event.is_set():
                 stop_event.wait(0.1)
     except KeyboardInterrupt:
-        print("\nStopped by user")
+        _logger.info("Stopped by user via KeyboardInterrupt")
     except Exception as e:
-        print("Stream error:", e, file=sys.stderr)
+        _logger.exception("Stream error: %s", e)
 
 
 def _parse_args(argv=None):

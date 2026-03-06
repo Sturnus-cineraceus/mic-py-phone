@@ -34,18 +34,10 @@ class BypassController:
         return self.stream is not None
 
     def start(self, selected_input, selected_output):
-        try:
-            if getattr(self, "debug", False):
-                print(f"[Bypass] start() called sel_in={selected_input} sel_out={selected_output}")
-        except Exception:
-            pass
+        self._logger.debug("[Bypass] start() called sel_in=%s sel_out=%s", selected_input, selected_output)
 
         if not audio_device.is_available():
-            try:
-                if getattr(self, "debug", False):
-                    print("[Bypass] sounddevice not available")
-            except Exception:
-                pass
+            self._logger.error("sounddevice library not available")
             return {"error": "sounddevice not available"}
 
         if self.stream is not None:
@@ -145,10 +137,7 @@ class BypassController:
 
             def callback(indata, outdata, frames, time, status):
                 if status:
-                    try:
-                        self._logger.warning("Stream callback status: %s", status)
-                    except Exception:
-                        pass
+                    self._logger.warning("Stream callback status: %s", status)
                 try:
                     # normalize input
                     if np.issubdtype(indata.dtype, np.integer):
@@ -243,10 +232,7 @@ class BypassController:
             return {"running": True}
         except Exception as e:
             self.stream = None
-            try:
-                self._logger.exception("Bypass start() exception: %s", str(e))
-            except Exception:
-                pass
+            self._logger.exception("Bypass start() exception: %s", str(e))
             return {"error": str(e), "trace": traceback.format_exc()}
 
     def stop(self):

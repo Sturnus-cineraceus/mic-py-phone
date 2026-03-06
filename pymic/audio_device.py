@@ -4,6 +4,7 @@ try:
     import sounddevice as sd
 except Exception:
     sd = None
+import logging
 
 
 def is_available():
@@ -111,10 +112,17 @@ def get_audio_devices():
                     seen.add(d.get("index"))
                     wasapi_devices.append(d)
 
-        return {
+        resp = {
             "devices": wasapi_devices,
             "hostapis": wasapi_list,
             "default_device": default_dev,
         }
+        logging.getLogger(__name__).info(
+            "Enumerated audio devices: %d devices, default=%s",
+            len(wasapi_devices),
+            str(default_dev),
+        )
+        return resp
     except Exception as e:
+        logging.getLogger(__name__).exception("Error enumerating audio devices")
         return {"error": str(e), "trace": traceback.format_exc()}

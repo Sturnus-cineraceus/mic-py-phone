@@ -95,6 +95,9 @@ class SettingsManager:
                 return self.reset_defaults()
             return data
         except (OSError, json.JSONDecodeError):
+            import logging
+
+            logging.getLogger(__name__).exception("Failed to load settings, resetting to defaults")
             return self.reset_defaults()
 
     def save(self, settings: dict) -> None:
@@ -113,6 +116,9 @@ class SettingsManager:
         with open(self._settings_path, "w", encoding="utf-8") as fh:
             json.dump(settings, fh, indent=2, ensure_ascii=False)
             fh.write(os.linesep)
+        import logging
+
+        logging.getLogger(__name__).info("Saved settings to %s", str(self._settings_path))
 
     def reset_defaults(self) -> dict:
         """Return a fresh copy of the default settings dict."""

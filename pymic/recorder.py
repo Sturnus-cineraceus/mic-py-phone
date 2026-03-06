@@ -173,6 +173,12 @@ class Recorder:
                 # stream creation failure should not prevent recorder registration
                 self._stream = None
 
+            logging.getLogger(__name__).info(
+                "Recorder started target=%s samplerate=%s channels=%s",
+                target_path,
+                samplerate,
+                channels,
+            )
             return {"ok": True}
         except Exception as e:
             return {"error": str(e)}
@@ -181,6 +187,7 @@ class Recorder:
         if not self.is_recording():
             return {"error": "not recording"}
         try:
+            logging.getLogger(__name__).info("Recorder stopping")
             # stop dedicated input stream if present
             try:
                 if self._stream is not None:
