@@ -3,6 +3,10 @@ document.getElementById('stopBtn').addEventListener('click', stopBypass);
 document.getElementById('saveBtn').addEventListener('click', saveSettings);
 document.getElementById('loadBtn').addEventListener('click', loadSettings);
 document.getElementById('resetBtn').addEventListener('click', resetSettings);
+// transcription toggle
+const transcribeCheckbox = document.getElementById('transcribeEnabled');
+const transcribeStatus = document.getElementById('transcribeStatus');
+if(transcribeCheckbox){ transcribeCheckbox.addEventListener('change', onTranscribeToggle); }
 // recording buttons
 const recBtnEl = document.getElementById('recBtn');
 const recStopBtnEl = document.getElementById('recStopBtn');
@@ -32,6 +36,16 @@ function setupAudioAccordion(){
   toggle.addEventListener('click', ()=>{ const expanded = toggle.getAttribute('aria-expanded') === 'true'; setState(!expanded); });
   // initialize collapsed
   setState(false);
+}
+
+function onTranscribeToggle(e){
+  const enabled = !!e.target.checked;
+  if(transcribeStatus) transcribeStatus.textContent = enabled ? '文字起こし: ON' : '文字起こし: OFF';
+  try{
+    if(window.pywebview && window.pywebview.api && window.pywebview.api.set_transcribe_enabled){
+      window.pywebview.api.set_transcribe_enabled(enabled);
+    }
+  }catch(err){ /* ignore */ }
 }
 
 function strengthLabel(percent){
@@ -598,6 +612,18 @@ async function refreshAllControls(){
         }
       }
     }
+    // transcription settings
+    try{
+      if(window.pywebview && window.pywebview.api && window.pywebview.api.get_transcribe_settings){
+        const t = await window.pywebview.api.get_transcribe_settings();
+        if(!t.error){
+          const cb = document.getElementById('transcribeEnabled');
+          const st = document.getElementById('transcribeStatus');
+          if(cb) cb.checked = !!t.enabled;
+          if(st) st.textContent = t.enabled ? '文字起こし: ON' : '文字起こし: OFF';
+        }
+      }
+    }catch(e){ /* ignore */ }
   }catch(e){ /* ignore refresh errors */ }
 }
 

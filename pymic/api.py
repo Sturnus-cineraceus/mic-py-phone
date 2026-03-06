@@ -9,6 +9,10 @@ import wave
 import os
 import subprocess
 import uuid
+try:
+    import webrtcvad
+except Exception:
+    webrtcvad = None
 
 from .settings_manager import SettingsManager
 from .sink_manager import SinkManager
@@ -89,9 +93,18 @@ class Api:
         self.dehiss_lpf_hz = 9000.0
         self.dehiss_threshold_db = -58.0
         self.dehiss_strength = 0.65
+        # Transcription / VAD settings
+        self.transcribe_enabled = False
+        # simple VAD experiment params
+        self.vad_window_ms = 30
+        self.vad_silence_ms = 500
+        # sink id for internal VAD/transcription sink
+        self._transcribe_sink_id = None
         # Settings persistence
         self._settings_manager = SettingsManager()
         self._apply_settings(self._settings_manager.load())
+        # current stream samplerate (set when bypass starts)
+        self._current_samplerate = None
 
     def _to_strength01(self, value):
         try:
@@ -561,6 +574,110 @@ class Api:
         except Exception:
             pass
 
+    # Transcription toggle and VAD helper (experiment)
+    def set_transcribe_enabled(self, enabled: bool):
+        try:
+            self.transcribe_enabled = bool(enabled)
+            # register/unregister internal VAD sink
+            if self.transcribe_enabled and self._transcribe_sink_id is None:
+                # register a sink that performs VAD-based segmentation and emits utterances
+                def _vad_sink(frames_np: np.ndarray):
+                    try:
+                        # closure-local state
+                        if not hasattr(_vad_sink, 'buf'):
+                            _vad_sink.buf = bytearray()
+                            _vad_sink.speech_buf = bytearray()
+                            _vad_sink.in_speech = False
+                            _vad_sink.silence_ms = 0
+                            _vad_sink.frame_ms = int(self.vad_window_ms or 30)
+                            _vad_sink.vad = None
+                            # create webrtcvad instance if available and samplerate supported
+                            try:
+                                sr = int(self._current_samplerate or 16000)
+                            except Exception:
+                                sr = 16000
+                            if webrtcvad is not None and sr in (8000, 16000, 32000, 48000):
+                                try:
+                                    _vad_sink.vad = webrtcvad.Vad(2)
+                                except Exception:
+                                    _vad_sink.vad = None
+
+                        # determine samplerate
+                        sr = int(self._current_samplerate or 16000)
+
+                        # convert incoming frames to mono int16 bytes
+                        arr = np.asarray(frames_np, dtype=np.float32)
+                        if arr.ndim > 1:
+                            mono = np.mean(arr, axis=1)
+                        else:
+                            mono = arr
+                        mono = np.clip(mono, -1.0, 1.0)
+                        int16 = (mono * 32767.0).astype(np.int16)
+                        bytes_chunk = int16.tobytes()
+
+                        # accumulate
+                        _vad_sink.buf.extend(bytes_chunk)
+
+                        # frame size in bytes for desired frame_ms
+                        frame_bytes = int(sr * (_vad_sink.frame_ms / 1000.0) * 2)
+                        # process full frames
+                        while len(_vad_sink.buf) >= frame_bytes:
+                            frame = bytes(_vad_sink.buf[:frame_bytes])
+                            del _vad_sink.buf[:frame_bytes]
+                            is_speech = False
+                            if _vad_sink.vad is not None:
+                                try:
+                                    is_speech = _vad_sink.vad.is_speech(frame, sr)
+                                except Exception:
+                                    is_speech = False
+                            else:
+                                try:
+                                    # fallback: energy-based decision
+                                    tmp = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32767.0
+                                    rms = float(np.sqrt(np.mean(np.square(tmp.astype(np.float64)))))
+                                    is_speech = rms > 1e-4
+                                except Exception:
+                                    is_speech = False
+
+                            if is_speech:
+                                _vad_sink.speech_buf.extend(frame)
+                                _vad_sink.in_speech = True
+                                _vad_sink.silence_ms = 0
+                            else:
+                                if _vad_sink.in_speech:
+                                    _vad_sink.silence_ms += _vad_sink.frame_ms
+                                    if _vad_sink.silence_ms >= int(self.vad_silence_ms or 500):
+                                        # utterance ended — send to transcription placeholder
+                                        try:
+                                            # convert speech_buf to numpy float array for downstream use
+                                            b = bytes(_vad_sink.speech_buf)
+                                            arr16 = np.frombuffer(b, dtype=np.int16).astype(np.float32) / 32767.0
+                                            # Here we would call Whisper or other ASR; for now print debug info
+                                            print(f"[VAD] Utterance end, samples={arr16.size}, sr={sr}")
+                                        except Exception:
+                                            pass
+                                        _vad_sink.speech_buf = bytearray()
+                                        _vad_sink.in_speech = False
+                                        _vad_sink.silence_ms = 0
+                                else:
+                                    # remain in silence
+                                    pass
+                    except Exception:
+                        pass
+
+                resp = self.register_sink(_vad_sink)
+                if resp and resp.get('ok'):
+                    self._transcribe_sink_id = resp.get('id')
+            elif (not self.transcribe_enabled) and self._transcribe_sink_id is not None:
+                try:
+                    self.unregister_sink(self._transcribe_sink_id)
+                except Exception:
+                    pass
+                self._transcribe_sink_id = None
+            return {"enabled": self.transcribe_enabled}
+        except Exception as e:
+            return {"error": str(e)}
+
     def set_gain_db(self, db):
         try:
             dbf = float(db)
@@ -799,6 +916,16 @@ class Api:
             }
         except Exception as e:
             return {"error": "invalid value", "detail": str(e)}
+
+    def get_transcribe_settings(self):
+        try:
+            return {
+                "enabled": bool(self.transcribe_enabled),
+                "vad_window_ms": int(self.vad_window_ms),
+                "vad_silence_ms": int(self.vad_silence_ms),
+            }
+        except Exception as e:
+            return {"error": str(e)}
 
     def is_running(self):
         return {"running": self.stream is not None}
@@ -1312,6 +1439,9 @@ class Api:
                 except Exception:
                     outdata.fill(0)
 
+            # remember samplerate for sinks (VAD/transcribe)
+            self._current_samplerate = samplerate
+
             self.stream = sd.Stream(
                 device=(self.selected_input, self.selected_output),
                 samplerate=samplerate,
@@ -1345,6 +1475,10 @@ class Api:
                 pass
             try:
                 self.last_output_rms = 0.0
+            except Exception:
+                pass
+            try:
+                self._current_samplerate = None
             except Exception:
                 pass
 
