@@ -3,12 +3,6 @@ import importlib
 import traceback
 
 import numpy as np
-import threading
-import queue
-import wave
-import os
-import subprocess
-import uuid
 
 import webrtcvad
 
@@ -18,6 +12,7 @@ from .recorder import Recorder
 
 import sounddevice as sd
 import noisereduce as nr
+
 _pedalboard_mod = importlib.import_module("pedalboard._pedalboard")
 Pedalboard = getattr(_pedalboard_mod, "Pedalboard", None)
 PBNoiseGate = getattr(_pedalboard_mod, "NoiseGate", None)

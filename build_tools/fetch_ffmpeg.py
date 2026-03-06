@@ -4,7 +4,6 @@ import shutil
 import zipfile
 import tempfile
 from urllib.request import urlopen
-import shutil
 
 DEFAULT_WIN_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 
