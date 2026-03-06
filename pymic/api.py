@@ -10,8 +10,8 @@ from .settings_manager import SettingsManager
 from .sink_manager import SinkManager
 from .recorder import Recorder
 
-import sounddevice as sd
-import noisereduce as nr
+from . import audio_device
+from . import noise_reduction
 
 _pedalboard_mod = importlib.import_module("pedalboard._pedalboard")
 Pedalboard = getattr(_pedalboard_mod, "Pedalboard", None)
@@ -78,154 +78,6 @@ class Api:
         # current stream samplerate (set when bypass starts)
         self._current_samplerate = None
 
-    def _to_strength01(self, value):
-        try:
-            v = float(value)
-            if v > 1.0:
-                v = v / 100.0
-            return max(0.0, min(1.0, v))
-        except Exception:
-            return 0.5
-
-    def _get_gate_strength(self):
-        return max(0.0, min(1.0, (float(self.gate_threshold_db) + 70.0) / 45.0))
-
-    def _get_hpf_strength(self):
-        return max(0.0, min(1.0, (float(self.hpf_cutoff_hz) - 50.0) / 150.0))
-
-    def _get_comp_strength(self):
-        return max(0.0, min(1.0, (float(self.comp_ratio) - 2.0) / 6.0))
-
-    def _collect_settings(self) -> dict:
-        """Collect current API state into a settings dict."""
-        gain_db = 0.0
-        if self.volume > 0:
-            gain_db = 20.0 * math.log10(float(self.volume))
-        return {
-            "gain_db": gain_db,
-            "input_device": self.selected_input,
-            "output_device": self.selected_output,
-            "gate": {
-                "enabled": bool(self.gate_enabled),
-                "threshold_db": float(self.gate_threshold_db),
-                "attack_ms": float(self.gate_attack_ms),
-                "release_ms": float(self.gate_release_ms),
-            },
-            "hpf": {
-                "enabled": bool(self.hpf_enabled),
-                "cutoff_hz": float(self.hpf_cutoff_hz),
-            },
-            "nr": {
-                "enabled": bool(self.nr_enabled),
-                "strength": float(self.nr_strength),
-            },
-            "compressor": {
-                "enabled": bool(self.comp_enabled),
-                "threshold_db": float(self.comp_threshold_db),
-                "ratio": float(self.comp_ratio),
-                "attack_ms": float(self.comp_attack_ms),
-                "release_ms": float(self.comp_release_ms),
-                "makeup_db": float(self.comp_makeup_db),
-            },
-            "dehiss": {
-                "enabled": bool(self.dehiss_enabled),
-                "strength": float(self.dehiss_strength),
-                "threshold_db": float(self.dehiss_threshold_db),
-                "lpf_hz": float(self.dehiss_lpf_hz),
-            },
-        }
-
-    def _apply_settings(self, settings: dict) -> None:
-        """Apply a settings dict to the current API state."""
-        if not isinstance(settings, dict):
-            return
-        try:
-            gain_db = float(settings.get("gain_db", 0.0))
-            self.volume = float(10.0 ** (gain_db / 20.0))
-        except Exception:
-            pass
-        self.selected_input = settings.get("input_device", self.selected_input)
-        self.selected_output = settings.get("output_device", self.selected_output)
-        gate = settings.get("gate", {})
-        if isinstance(gate, dict):
-            self.gate_enabled = bool(gate.get("enabled", self.gate_enabled))
-            try:
-                self.gate_threshold_db = float(
-                    gate.get("threshold_db", self.gate_threshold_db)
-                )
-            except Exception:
-                pass
-            try:
-                self.gate_attack_ms = float(gate.get("attack_ms", self.gate_attack_ms))
-            except Exception:
-                pass
-            try:
-                self.gate_release_ms = float(
-                    gate.get("release_ms", self.gate_release_ms)
-                )
-            except Exception:
-                pass
-        hpf = settings.get("hpf", {})
-        if isinstance(hpf, dict):
-            self.hpf_enabled = bool(hpf.get("enabled", self.hpf_enabled))
-            try:
-                self.hpf_cutoff_hz = float(hpf.get("cutoff_hz", self.hpf_cutoff_hz))
-            except Exception:
-                pass
-        nr = settings.get("nr", {})
-        if isinstance(nr, dict):
-            self.nr_enabled = bool(nr.get("enabled", self.nr_enabled))
-            try:
-                self.nr_strength = float(nr.get("strength", self.nr_strength))
-            except Exception:
-                pass
-        comp = settings.get("compressor", {})
-        if isinstance(comp, dict):
-            self.comp_enabled = bool(comp.get("enabled", self.comp_enabled))
-            try:
-                self.comp_threshold_db = float(
-                    comp.get("threshold_db", self.comp_threshold_db)
-                )
-            except Exception:
-                pass
-            try:
-                self.comp_ratio = float(comp.get("ratio", self.comp_ratio))
-            except Exception:
-                pass
-            try:
-                self.comp_attack_ms = float(comp.get("attack_ms", self.comp_attack_ms))
-            except Exception:
-                pass
-            try:
-                self.comp_release_ms = float(
-                    comp.get("release_ms", self.comp_release_ms)
-                )
-            except Exception:
-                pass
-            try:
-                self.comp_makeup_db = float(comp.get("makeup_db", self.comp_makeup_db))
-            except Exception:
-                pass
-        dehiss = settings.get("dehiss", {})
-        if isinstance(dehiss, dict):
-            self.dehiss_enabled = bool(dehiss.get("enabled", self.dehiss_enabled))
-            try:
-                self.dehiss_strength = float(
-                    dehiss.get("strength", self.dehiss_strength)
-                )
-            except Exception:
-                pass
-            try:
-                self.dehiss_threshold_db = float(
-                    dehiss.get("threshold_db", self.dehiss_threshold_db)
-                )
-            except Exception:
-                pass
-            try:
-                self.dehiss_lpf_hz = float(dehiss.get("lpf_hz", self.dehiss_lpf_hz))
-            except Exception:
-                pass
-
     # Settings persistence API (called from JavaScript)
 
     def save_settings(self):
@@ -290,73 +142,140 @@ class Api:
         except Exception as e:
             return {"error": str(e)}
 
-    def get_audio_devices(self):
-        if sd is None:
-            return {"error": "sounddevice not available"}
+    def _to_strength01(self, value):
+        """
+        Convert input to a float in the 0.0-1.0 range.
+        Raises ValueError for non-numeric or out-of-range inputs.
+        """
         try:
-            hostapis = sd.query_hostapis()
-            devs = sd.query_devices()
+            s = float(value)
+        except Exception:
+            raise ValueError("strength must be a number")
+        if s < 0.0 or s > 1.0:
+            raise ValueError("strength must be between 0 and 1")
+        return s
 
+    def _get_gate_strength(self):
+        try:
+            s = (float(self.gate_threshold_db) + 70.0) / 45.0
+            return max(0.0, min(1.0, s))
+        except Exception:
+            return 0.0
+
+    def _get_hpf_strength(self):
+        try:
+            s = (float(self.hpf_cutoff_hz) - 50.0) / 150.0
+            return max(0.0, min(1.0, s))
+        except Exception:
+            return 0.0
+
+    def _get_comp_strength(self):
+        try:
+            s = (float(self.comp_ratio) - 2.0) / 6.0
+            return max(0.0, min(1.0, s))
+        except Exception:
+            return 0.0
+
+    def _collect_settings(self):
+        try:
+            gain_db = 20.0 * math.log10(self.volume) if self.volume > 0 else 0.0
+        except Exception:
+            gain_db = 0.0
+        return {
+            "gain_db": float(gain_db),
+            "input_device": self.selected_input,
+            "output_device": self.selected_output,
+            "gate": {
+                "enabled": bool(self.gate_enabled),
+                "threshold_db": float(self.gate_threshold_db),
+                "attack_ms": float(self.gate_attack_ms),
+                "release_ms": float(self.gate_release_ms),
+            },
+            "hpf": {"enabled": bool(self.hpf_enabled), "cutoff_hz": float(self.hpf_cutoff_hz)},
+            "nr": {"enabled": bool(self.nr_enabled), "strength": float(self.nr_strength)},
+            "compressor": {
+                "enabled": bool(self.comp_enabled),
+                "threshold_db": float(self.comp_threshold_db),
+                "ratio": float(self.comp_ratio),
+                "attack_ms": float(self.comp_attack_ms),
+                "release_ms": float(self.comp_release_ms),
+                "makeup_db": float(self.comp_makeup_db),
+            },
+            "dehiss": {
+                "enabled": bool(self.dehiss_enabled),
+                "strength": float(self.dehiss_strength),
+                "threshold_db": float(self.dehiss_threshold_db),
+                "lpf_hz": float(self.dehiss_lpf_hz),
+            },
+        }
+
+    def _apply_settings(self, settings: dict):
+        try:
+            if not isinstance(settings, dict):
+                return
+            if "gain_db" in settings:
+                try:
+                    g = float(settings.get("gain_db", 0.0))
+                    self.volume = float(10.0 ** (g / 20.0))
+                except Exception:
+                    pass
+            if "input_device" in settings:
+                try:
+                    self.selected_input = settings.get("input_device")
+                except Exception:
+                    pass
+            if "output_device" in settings:
+                try:
+                    self.selected_output = settings.get("output_device")
+                except Exception:
+                    pass
+            gate = settings.get("gate") or {}
             try:
-                default_dev = sd.default.device
-                if default_dev is not None:
-                    try:
-                        default_dev = list(default_dev)
-                    except Exception:
-                        try:
-                            default_dev = [int(default_dev)]
-                        except Exception:
-                            default_dev = None
+                self.gate_enabled = bool(gate.get("enabled", self.gate_enabled))
+                self.gate_threshold_db = float(gate.get("threshold_db", self.gate_threshold_db))
+                self.gate_attack_ms = float(gate.get("attack_ms", self.gate_attack_ms))
+                self.gate_release_ms = float(gate.get("release_ms", self.gate_release_ms))
             except Exception:
-                default_dev = None
+                pass
 
-            devices = []
-            for i, d in enumerate(devs):
-                devices.append(
-                    {
-                        "index": i,
-                        "name": d.get("name"),
-                        "max_input_channels": d.get("max_input_channels"),
-                        "max_output_channels": d.get("max_output_channels"),
-                        "default_samplerate": d.get("default_samplerate"),
-                    }
-                )
+            hpf = settings.get("hpf") or {}
+            try:
+                self.hpf_enabled = bool(hpf.get("enabled", self.hpf_enabled))
+                self.hpf_cutoff_hz = float(hpf.get("cutoff_hz", self.hpf_cutoff_hz))
+            except Exception:
+                pass
 
-            hostapi_list = []
-            for h in hostapis:
-                h_name = h.get("name")
-                h_devices = []
-                for idx in h.get("devices", []):
-                    if isinstance(idx, int) and 0 <= idx < len(devices):
-                        h_devices.append(devices[idx])
-                hostapi_list.append({"name": h_name, "devices": h_devices})
+            nr = settings.get("nr") or {}
+            try:
+                self.nr_enabled = bool(nr.get("enabled", self.nr_enabled))
+                self.nr_strength = float(nr.get("strength", self.nr_strength))
+            except Exception:
+                pass
 
-            # Filter to WASAPI host APIs only (case-insensitive). If none are present,
-            # return an error because the UI should allow selection only for WASAPI.
-            wasapi_list = [
-                h
-                for h in hostapi_list
-                if isinstance(h.get("name"), str) and "WASAPI" in h.get("name").upper()
-            ]
-            if not wasapi_list:
-                return {"error": "WASAPI host API not available on this system"}
+            comp = settings.get("compressor") or {}
+            try:
+                self.comp_enabled = bool(comp.get("enabled", self.comp_enabled))
+                self.comp_threshold_db = float(comp.get("threshold_db", self.comp_threshold_db))
+                self.comp_ratio = float(comp.get("ratio", self.comp_ratio))
+                self.comp_attack_ms = float(comp.get("attack_ms", self.comp_attack_ms))
+                self.comp_release_ms = float(comp.get("release_ms", self.comp_release_ms))
+                self.comp_makeup_db = float(comp.get("makeup_db", self.comp_makeup_db))
+            except Exception:
+                pass
 
-            # Flatten devices from WASAPI hostapis and remove duplicates by index
-            seen = set()
-            wasapi_devices = []
-            for h in wasapi_list:
-                for d in h.get("devices", []):
-                    if d and d.get("index") not in seen:
-                        seen.add(d.get("index"))
-                        wasapi_devices.append(d)
+            deh = settings.get("dehiss") or {}
+            try:
+                self.dehiss_enabled = bool(deh.get("enabled", self.dehiss_enabled))
+                self.dehiss_strength = float(deh.get("strength", self.dehiss_strength))
+                self.dehiss_threshold_db = float(deh.get("threshold_db", self.dehiss_threshold_db))
+                self.dehiss_lpf_hz = float(deh.get("lpf_hz", self.dehiss_lpf_hz))
+            except Exception:
+                pass
+        except Exception:
+            pass
 
-            return {
-                "devices": wasapi_devices,
-                "hostapis": wasapi_list,
-                "default_device": default_dev,
-            }
-        except Exception as e:
-            return {"error": str(e), "trace": traceback.format_exc()}
+    def get_audio_devices(self):
+        return audio_device.get_audio_devices()
 
     # --- Recording / Save dialog API ---
     def open_save_file_dialog(self):
@@ -395,7 +314,7 @@ class Api:
         a temporary WAV file in the same directory as `target_path`.
         The final MP3 will be produced when `stop_record` is called.
         """
-        if sd is None:
+        if not audio_device.is_available():
             return {"error": "sounddevice not available"}
         if self._recorder.is_recording() or self._record_stream is not None:
             return {"error": "already recording"}
@@ -403,7 +322,7 @@ class Api:
             return {"error": "no target path"}
 
         try:
-            dev = sd.query_devices(self.selected_input)
+            dev = audio_device.query_device(self.selected_input)
             samplerate = int(dev.get("default_samplerate") or 44100)
             channels = int(dev.get("max_input_channels") or 1)
 
@@ -432,7 +351,7 @@ class Api:
                     pass
 
             if self.stream is None:
-                stream = sd.InputStream(
+                stream = audio_device.create_input_stream(
                     device=self.selected_input,
                     samplerate=samplerate,
                     channels=channels,
@@ -944,7 +863,7 @@ class Api:
         return {"running": self.stream is not None}
 
     def start_bypass(self):
-        if sd is None:
+        if not audio_device.is_available():
             return {"error": "sounddevice not available"}
 
         if self.stream is not None:
@@ -954,8 +873,8 @@ class Api:
             return {"error": "input or output device not selected"}
 
         try:
-            in_dev = sd.query_devices(self.selected_input)
-            out_dev = sd.query_devices(self.selected_output)
+            in_dev = audio_device.query_device(self.selected_input)
+            out_dev = audio_device.query_device(self.selected_output)
 
             samplerate = int(
                 in_dev.get("default_samplerate")
@@ -1106,31 +1025,22 @@ class Api:
                     # Apply noise reduction if enabled and available.
                     # Use per-channel stationary spectral gating which works well for white noise.
                     try:
-                        if bool(self.nr_enabled) and nr is not None and fdata.size > 0:
+                        if bool(self.nr_enabled) and noise_reduction.is_available() and fdata.size > 0:
                             prop_decrease = float(max(0.0, min(1.0, self.nr_strength)))
                             nch = fdata.shape[1]
                             if nch == 1:
-                                # reduce_noise expects 1D
-                                out_nr = nr.reduce_noise(
-                                    y=fdata[:, 0],
-                                    sr=samplerate,
-                                    stationary=True,
-                                    prop_decrease=prop_decrease,
+                                out_nr = noise_reduction.reduce_noise(
+                                    y=fdata[:, 0], sr=samplerate, strength=prop_decrease
                                 )
                                 fdata = np.asarray(out_nr).reshape(-1, 1)
                             else:
-                                # process each channel separately to avoid mixing
                                 out_nr = np.empty_like(fdata)
                                 for ch in range(nch):
-                                    out_nr[:, ch] = nr.reduce_noise(
-                                        y=fdata[:, ch],
-                                        sr=samplerate,
-                                        stationary=True,
-                                        prop_decrease=prop_decrease,
+                                    out_nr[:, ch] = noise_reduction.reduce_noise(
+                                        y=fdata[:, ch], sr=samplerate, strength=prop_decrease
                                     )
                                 fdata = out_nr
                     except Exception:
-                        # keep original data if noise reduction fails
                         pass
 
                     use_pedalboard = HAS_PEDALBOARD and (
@@ -1503,7 +1413,7 @@ class Api:
             # remember samplerate for sinks (VAD/transcribe)
             self._current_samplerate = samplerate
 
-            self.stream = sd.Stream(
+            self.stream = audio_device.create_stream(
                 device=(self.selected_input, self.selected_output),
                 samplerate=samplerate,
                 channels=channels,
