@@ -22,7 +22,7 @@
     }catch(e){ window.showToast && window.showToast('録音開始に失敗しました: ' + e, 'error'); }
   }
 
-  async function stopRecording(){
+    async function stopRecording(){
     try{
       window.showToast && window.showToast('保存を開始します。');
       const resp = await window.pywebview.api.stop_record();
@@ -32,8 +32,19 @@
         if(recBtnEl) recBtnEl.disabled = false;
         if(recStopBtnEl) recStopBtnEl.disabled = true;
         if(recBtnEl) recBtnEl.classList.remove('recording');
-        const st = document.getElementById('recordStatus'); if(st) st.textContent = '録音: 停止中';
-        window.showToast && window.showToast('録音を保存しました。', 'success');
+        const st = document.getElementById('recordStatus');
+        if(st){
+          if(resp.converting){
+            st.textContent = '録音: 変換中';
+          } else {
+            st.textContent = '録音: 停止中';
+          }
+        }
+        if(resp.converting){
+          window.showToast && window.showToast('録音ファイルを変換しています。処理が完了したら出力ファイルに保存されます。', 'info');
+        } else {
+          window.showToast && window.showToast('録音を保存しました。', 'success');
+        }
       } else { window.showToast && window.showToast('録音停止に失敗しました: ' + (resp && resp.error ? resp.error : '不明なエラー'), 'error'); }
     }catch(e){ window.showToast && window.showToast('録音停止に失敗しました: ' + e, 'error'); }
   }
