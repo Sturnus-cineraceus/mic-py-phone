@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import math
-import sys
 import threading
 import logging
 
@@ -93,8 +92,8 @@ def run_stream(
     stop_event = threading.Event()
 
     def callback(indata, outdata, frames, time_info, status):
-            if status:
-                _logger.warning("Stream callback status: %s", status)
+        if status:
+            _logger.warning("Stream callback status: %s", status)
         # ensure float32
         data = indata.copy().astype(np.float32)
         # apply boost

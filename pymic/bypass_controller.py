@@ -1,6 +1,4 @@
 import traceback
-import time
-import threading
 import logging
 
 import numpy as np

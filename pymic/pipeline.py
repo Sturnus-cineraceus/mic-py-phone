@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional
 import copy
+import logging
 import numpy as np
 
 from .processors import (
@@ -43,6 +44,7 @@ class BypassPipeline:
         self._dehiss = None
 
         self._init_processors(self.settings)
+        self._logger = logging.getLogger(__name__)
 
     def _init_processors(self, settings: Dict[str, Any]):
         # instantiate processors according to settings
@@ -108,6 +110,21 @@ class BypassPipeline:
                 if deh_enabled
                 else None
             )
+            # Log instantiated processors and key params
+            try:
+                self._logger.info(
+                    "Pipeline processors - HPF=%s cutoff=%s, Gate=%s threshold=%s, Comp=%s ratio=%s, DeHiss=%s strength=%s",
+                    bool(self._hpf is not None),
+                    getattr(self._hpf, "cutoff", None) if self._hpf is not None else None,
+                    bool(self._gate is not None),
+                    getattr(self._gate, "threshold", None) if self._gate is not None else None,
+                    bool(self._comp is not None),
+                    getattr(self._comp, "ratio", None) if self._comp is not None else None,
+                    bool(self._dehiss is not None),
+                    getattr(self._dehiss, "strength", None) if self._dehiss is not None else None,
+                )
+            except Exception:
+                pass
         except Exception:
             # fallback to defaults
             self._hpf = HighpassProcessor(
@@ -122,6 +139,10 @@ class BypassPipeline:
             self._dehiss = DeHissProcessor(
                 samplerate=self.samplerate, channels=self.channels
             )
+            try:
+                self._logger.info("Pipeline processors - default instances created")
+            except Exception:
+                pass
 
     def start(self) -> None:
         self._running = True
@@ -130,13 +151,29 @@ class BypassPipeline:
         self._running = False
 
     def apply_settings(self, settings_snapshot: Dict[str, Any]) -> None:
-        self.settings = settings_snapshot or {}
+        old = self.settings or {}
+        new = settings_snapshot or {}
+        self.settings = new
+        # log what changed between old and new (shallow diff)
+        try:
+            diffs = {}
+            for k in set(list(old.keys()) + list(new.keys())):
+                if old.get(k) != new.get(k):
+                    diffs[k] = {"old": old.get(k), "new": new.get(k)}
+            if diffs:
+                self._logger.info("Applying pipeline settings diff: %s", diffs)
+            else:
+                self._logger.debug("Applying pipeline settings: no changes detected")
+        except Exception:
+            self._logger.debug("Applying pipeline settings (unable to compute diff)")
+
         # update gain from settings
         try:
             gain_db = float(self.settings.get("gain_db", 0.0))
             self.gain = float(10.0 ** (gain_db / 20.0))
         except Exception:
             self.gain = 1.0
+
         self._init_processors(self.settings)
 
     def apply_snapshot(self, snapshot: Dict[str, Any]) -> None:
