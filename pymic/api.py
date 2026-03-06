@@ -301,10 +301,22 @@ class Api:
     def _maybe_apply_pipeline_settings(self):
         """If a pipeline exists, apply the current settings snapshot to it."""
         try:
+            # First try Api-level pipeline (if present)
             pipeline = getattr(self, "_pipeline", None)
             if pipeline is not None:
                 try:
                     pipeline.apply_settings(self._collect_settings())
+                except Exception:
+                    pass
+            else:
+                # If bypass controller manages the active pipeline, delegate to it
+                try:
+                    bypass_controller = getattr(self, "_bypass_controller", None)
+                    if bypass_controller is not None:
+                        try:
+                            bypass_controller.apply_settings(self._collect_settings())
+                        except Exception:
+                            pass
                 except Exception:
                     pass
         except Exception:
@@ -817,6 +829,22 @@ class Api:
     def start_bypass(self):
         # Delegate to BypassController if available
         try:
+            # If devices not explicitly selected, try to use system defaults
+            try:
+                if self.selected_input is None or self.selected_output is None:
+                    try:
+                        default_dev = audio_device.get_default_device()
+                        if isinstance(default_dev, (list, tuple)):
+                            if self.selected_input is None and len(default_dev) > 0:
+                                self.selected_input = default_dev[0]
+                            if self.selected_output is None and len(default_dev) > 1:
+                                self.selected_output = default_dev[1]
+                    except Exception:
+                        pass
+
+            except Exception:
+                pass
+
             bypass_controller = getattr(self, "_bypass_controller", None)
             if bypass_controller is not None:
                 return bypass_controller.start(

@@ -105,3 +105,11 @@ button{background:var(--accent);color:#fff;border:0;padding:8px 12px;border-radi
 .toast.show{ opacity:1; transform:translateY(0); }
 .toast.success{ background:#059669; }
 .toast.error{ background:#dc2626; }
+
+/* Allow copying text from the UI: enable text selection on main containers */
+.container, .card, .site-header, .site-brand, .message, label, .device-label, .accordion-header, .accordion-panel, .toast-area, .toast, .device-select, .message {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}

@@ -1,4 +1,7 @@
 import traceback
+import time
+import threading
+import logging
 
 import numpy as np
 
@@ -24,12 +27,25 @@ class BypassController:
         self._transcribe_sink_id = None
         self.vad_window_ms = 30
         self.vad_silence_ms = 500
+        # debug logging removed for production
+        self._logger = logging.getLogger(__name__)
 
     def is_running(self):
         return self.stream is not None
 
     def start(self, selected_input, selected_output):
+        try:
+            if getattr(self, "debug", False):
+                print(f"[Bypass] start() called sel_in={selected_input} sel_out={selected_output}")
+        except Exception:
+            pass
+
         if not audio_device.is_available():
+            try:
+                if getattr(self, "debug", False):
+                    print("[Bypass] sounddevice not available")
+            except Exception:
+                pass
             return {"error": "sounddevice not available"}
 
         if self.stream is not None:
@@ -58,10 +74,56 @@ class BypassController:
             try:
                 self._pipeline.start()
             except Exception:
-                pass
+                self._logger.exception("Failed to start pipeline")
 
             # remember samplerate for sinks (VAD/transcribe)
             self._current_samplerate = samplerate
+
+            # Ensure selected input/output are compatible (same host API). If not,
+            # attempt to pick a compatible pair from available hostapis.
+            try:
+                devs = audio_device.query_devices()
+                hostapis = audio_device.query_hostapis()
+                compatible = False
+                for h in hostapis or []:
+                    h_devs = h.get("devices") or []
+                    if (
+                        isinstance(h_devs, (list, tuple))
+                        and selected_input in h_devs
+                        and selected_output in h_devs
+                    ):
+                        compatible = True
+                        break
+                if not compatible:
+                    # find a hostapi that has at least one input and one output device
+                    picked_in = None
+                    picked_out = None
+                    for h in hostapis or []:
+                        for idx in (h.get("devices") or []):
+                            try:
+                                d = devs[int(idx)]
+                            except Exception:
+                                continue
+                            if picked_in is None and d.get("max_input_channels", 0) > 0:
+                                picked_in = int(idx)
+                            if picked_out is None and d.get("max_output_channels", 0) > 0:
+                                picked_out = int(idx)
+                            if picked_in is not None and picked_out is not None:
+                                break
+                        if picked_in is not None and picked_out is not None:
+                            break
+                    if picked_in is not None and picked_out is not None:
+                        # override selection with compatible pair
+                        try:
+                            selected_input = picked_in
+                            selected_output = picked_out
+                        except Exception:
+                            pass
+                    else:
+                        # leave selections as-is; let create_stream raise a clear error
+                        pass
+            except Exception:
+                pass
 
             def _scale_buffer(buf, target_dtype):
                 if np.issubdtype(buf.dtype, np.integer) or np.issubdtype(
@@ -83,7 +145,10 @@ class BypassController:
 
             def callback(indata, outdata, frames, time, status):
                 if status:
-                    pass
+                    try:
+                        self._logger.warning("Stream callback status: %s", status)
+                    except Exception:
+                        pass
                 try:
                     # normalize input
                     if np.issubdtype(indata.dtype, np.integer):
@@ -105,6 +170,7 @@ class BypassController:
                     except Exception:
                         pass
 
+
                     # process via pipeline
                     try:
                         if self._pipeline is not None:
@@ -113,6 +179,7 @@ class BypassController:
                             out_frames = fdata
                     except Exception:
                         out_frames = fdata
+
 
                     # update output level from pipeline if available
                     try:
@@ -134,12 +201,14 @@ class BypassController:
                         except Exception:
                             pass
 
+                    # levels updated; no debug logging
+
                     # dispatch to sinks (non-blocking)
                     try:
                         if out_frames.size > 0:
                             self.sink_mgr.dispatch(out_frames)
                     except Exception:
-                        pass
+                        self._logger.exception("Error dispatching to sinks")
 
                     # write to outdata with simple scaling
                     try:
@@ -174,6 +243,10 @@ class BypassController:
             return {"running": True}
         except Exception as e:
             self.stream = None
+            try:
+                self._logger.exception("Bypass start() exception: %s", str(e))
+            except Exception:
+                pass
             return {"error": str(e), "trace": traceback.format_exc()}
 
     def stop(self):
@@ -307,9 +380,14 @@ class BypassController:
                                                 )
                                                 / 32767.0
                                             )
-                                            print(
-                                                f"[VAD] Utterance end, samples={arr16.size}, sr={sr}"
-                                            )
+                                            try:
+                                                self._logger.info(
+                                                    "VAD utterance end, samples=%s, sr=%s",
+                                                    arr16.size,
+                                                    sr,
+                                                )
+                                            except Exception:
+                                                pass
                                         except Exception:
                                             pass
                                         _vad_sink.speech_buf = bytearray()
@@ -343,3 +421,16 @@ class BypassController:
             "input_rms": float(self.last_input_rms or 0.0),
             "output_rms": float(self.last_output_rms or 0.0),
         }
+
+    def apply_settings(self, settings_snapshot: dict):
+        """Apply settings snapshot to the active pipeline if present."""
+        try:
+            if self._pipeline is not None:
+                try:
+                    self._pipeline.apply_settings(settings_snapshot or {})
+                    return {"ok": True}
+                except Exception as e:
+                    return {"error": str(e)}
+            return {"error": "no pipeline"}
+        except Exception as e:
+            return {"error": str(e)}

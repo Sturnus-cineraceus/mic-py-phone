@@ -26,6 +26,12 @@ class BypassPipeline:
         self.samplerate = int(samplerate or 44100)
         self.channels = int(channels or 1)
         self.settings = settings or {}
+        # gain as linear multiplier (from settings.gain_db)
+        try:
+            gain_db = float(self.settings.get("gain_db", 0.0))
+            self.gain = float(10.0 ** (gain_db / 20.0))
+        except Exception:
+            self.gain = 1.0
         self._running = False
         self._last_input_level = 0.0
         self._last_output_level = 0.0
@@ -47,27 +53,60 @@ class BypassPipeline:
                 settings.get("compressor", {}) if isinstance(settings, dict) else {}
             )
             deh_cfg = settings.get("dehiss", {}) if isinstance(settings, dict) else {}
+            # Respect 'enabled' flags in settings; only instantiate processors when enabled
+            try:
+                hpf_enabled = bool(hpf_cfg.get("enabled", False))
+            except Exception:
+                hpf_enabled = False
+            try:
+                gate_enabled = bool(gate_cfg.get("enabled", False))
+            except Exception:
+                gate_enabled = False
+            try:
+                comp_enabled = bool(comp_cfg.get("enabled", False))
+            except Exception:
+                comp_enabled = False
+            try:
+                deh_enabled = bool(deh_cfg.get("enabled", False))
+            except Exception:
+                deh_enabled = False
 
-            self._hpf = HighpassProcessor(
-                samplerate=self.samplerate,
-                channels=self.channels,
-                cutoff=float(hpf_cfg.get("cutoff_hz", 80.0)),
+            self._hpf = (
+                HighpassProcessor(
+                    samplerate=self.samplerate,
+                    channels=self.channels,
+                    cutoff=float(hpf_cfg.get("cutoff_hz", 80.0)),
+                )
+                if hpf_enabled
+                else None
             )
-            self._gate = GateProcessor(
-                samplerate=self.samplerate,
-                channels=self.channels,
-                threshold=float(gate_cfg.get("threshold_db", -40.0)),
+            self._gate = (
+                GateProcessor(
+                    samplerate=self.samplerate,
+                    channels=self.channels,
+                    threshold=float(gate_cfg.get("threshold_db", -40.0)),
+                )
+                if gate_enabled
+                else None
             )
-            self._comp = CompressorProcessor(
-                samplerate=self.samplerate,
-                channels=self.channels,
-                ratio=float(comp_cfg.get("ratio", 4.0)),
-                threshold=float(comp_cfg.get("threshold_db", -24.0)),
+            self._comp = (
+                CompressorProcessor(
+                    samplerate=self.samplerate,
+                    channels=self.channels,
+                    ratio=float(comp_cfg.get("ratio", 4.0)),
+                    threshold=float(comp_cfg.get("threshold_db", -24.0)),
+                )
+                if comp_enabled
+                else None
             )
-            self._dehiss = DeHissProcessor(
-                samplerate=self.samplerate,
-                channels=self.channels,
-                strength=float(deh_cfg.get("strength", 0.5)),
+            self._dehiss = (
+                DeHissProcessor(
+                    samplerate=self.samplerate,
+                    channels=self.channels,
+                    strength=float(deh_cfg.get("strength", 0.5)),
+                )
+                if deh_enabled
+                else None
             )
         except Exception:
             # fallback to defaults
@@ -92,6 +131,12 @@ class BypassPipeline:
 
     def apply_settings(self, settings_snapshot: Dict[str, Any]) -> None:
         self.settings = settings_snapshot or {}
+        # update gain from settings
+        try:
+            gain_db = float(self.settings.get("gain_db", 0.0))
+            self.gain = float(10.0 ** (gain_db / 20.0))
+        except Exception:
+            self.gain = 1.0
         self._init_processors(self.settings)
 
     def apply_snapshot(self, snapshot: Dict[str, Any]) -> None:
@@ -110,29 +155,31 @@ class BypassPipeline:
 
         try:
             s["hpf"] = {
+                "enabled": bool(self._hpf is not None),
                 "cutoff_hz": float(
                     getattr(
                         self._hpf,
                         "cutoff",
                         self.settings.get("hpf", {}).get("cutoff_hz", 80.0),
                     )
-                )
+                ),
             }
         except Exception:
-            s["hpf"] = {"cutoff_hz": 80.0}
+            s["hpf"] = {"enabled": False, "cutoff_hz": 80.0}
 
         try:
             s["gate"] = {
+                "enabled": bool(self._gate is not None),
                 "threshold_db": float(
                     getattr(
                         self._gate,
                         "threshold",
                         self.settings.get("gate", {}).get("threshold_db", -40.0),
                     )
-                )
+                ),
             }
         except Exception:
-            s["gate"] = {"threshold_db": -40.0}
+            s["gate"] = {"enabled": False, "threshold_db": -40.0}
 
         try:
             comp_ratio = float(
@@ -156,22 +203,27 @@ class BypassPipeline:
                 comp_threshold = float(
                     self.settings.get("compressor", {}).get("threshold_db", -24.0)
                 )
-            s["compressor"] = {"ratio": comp_ratio, "threshold_db": comp_threshold}
+            s["compressor"] = {
+                "enabled": bool(self._comp is not None),
+                "ratio": comp_ratio,
+                "threshold_db": comp_threshold,
+            }
         except Exception:
-            s["compressor"] = {"ratio": 4.0, "threshold_db": -24.0}
+            s["compressor"] = {"enabled": False, "ratio": 4.0, "threshold_db": -24.0}
 
         try:
             s["dehiss"] = {
+                "enabled": bool(self._dehiss is not None),
                 "strength": float(
                     getattr(
                         self._dehiss,
                         "strength",
                         self.settings.get("dehiss", {}).get("strength", 0.5),
                     )
-                )
+                ),
             }
         except Exception:
-            s["dehiss"] = {"strength": 0.5}
+            s["dehiss"] = {"enabled": False, "strength": 0.5}
 
         # preserve any unknown keys present in the original settings
         try:
@@ -221,6 +273,12 @@ class BypassPipeline:
                 )
             except Exception:
                 pass
+
+                # apply post-gain (linear)
+                try:
+                    f = f * float(getattr(self, "gain", 1.0))
+                except Exception:
+                    pass
 
             return f
         except Exception:
