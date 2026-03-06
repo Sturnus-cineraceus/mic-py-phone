@@ -10,42 +10,19 @@ import os
 import subprocess
 import uuid
 
-try:
-    import webrtcvad
-except Exception:
-    webrtcvad = None
+import webrtcvad
 
 from .settings_manager import SettingsManager
 from .sink_manager import SinkManager
 from .recorder import Recorder
 
-try:
-    import sounddevice as sd
-except Exception:
-    sd = None
-try:
-    import noisereduce as nr
-except Exception:
-    nr = None
-try:
-    _pedalboard_mod = importlib.import_module("pedalboard._pedalboard")
-    Pedalboard = getattr(_pedalboard_mod, "Pedalboard", None)
-    PBNoiseGate = getattr(_pedalboard_mod, "NoiseGate", None)
-    PBCompressor = getattr(_pedalboard_mod, "Compressor", None)
-    PBHighpassFilter = getattr(_pedalboard_mod, "HighpassFilter", None)
-except Exception:
-    try:
-        _pedalboard_mod = importlib.import_module("pedalboard")
-        Pedalboard = getattr(_pedalboard_mod, "Pedalboard", None)
-        PBNoiseGate = getattr(_pedalboard_mod, "NoiseGate", None)
-        PBCompressor = getattr(_pedalboard_mod, "Compressor", None)
-        PBHighpassFilter = getattr(_pedalboard_mod, "HighpassFilter", None)
-    except Exception:
-        _pedalboard_mod = None
-        Pedalboard = None
-        PBNoiseGate = None
-        PBCompressor = None
-        PBHighpassFilter = None
+import sounddevice as sd
+import noisereduce as nr
+_pedalboard_mod = importlib.import_module("pedalboard._pedalboard")
+Pedalboard = getattr(_pedalboard_mod, "Pedalboard", None)
+PBNoiseGate = getattr(_pedalboard_mod, "NoiseGate", None)
+PBCompressor = getattr(_pedalboard_mod, "Compressor", None)
+PBHighpassFilter = getattr(_pedalboard_mod, "HighpassFilter", None)
 
 HAS_PEDALBOARD = all(
     x is not None for x in (Pedalboard, PBNoiseGate, PBCompressor, PBHighpassFilter)
