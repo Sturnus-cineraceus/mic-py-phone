@@ -461,9 +461,18 @@ async function stopRecording(){
       if(recStopBtnEl) recStopBtnEl.disabled = true;
       if(recBtnEl) recBtnEl.classList.remove('recording');
       const st = document.getElementById('recordStatus');
-      if(st) st.textContent = '録音: 停止中';
-      // Avoid showing file paths; show generic success toast
-      showToast('録音を保存しました。', 'success');
+      if(st){
+        if(resp.converting){
+          st.textContent = '録音: 変換中';
+        } else {
+          st.textContent = '録音: 停止中';
+        }
+      }
+      if(resp.converting){
+        showToast('録音ファイルを変換しています。処理が完了したら出力ファイルに保存されます。', 'info');
+      } else {
+        showToast('録音を保存しました。', 'success');
+      }
     } else {
       showToast('録音停止に失敗しました: ' + (resp && resp.error ? resp.error : '不明なエラー'), 'error');
     }

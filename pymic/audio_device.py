@@ -48,13 +48,21 @@ def get_default_device():
 def create_input_stream(device, samplerate, channels, dtype, callback):
     if sd is None:
         raise RuntimeError("sounddevice not available")
-    return sd.InputStream(device=device, samplerate=samplerate, channels=channels, dtype=dtype, callback=callback)
+    return sd.InputStream(
+        device=device,
+        samplerate=samplerate,
+        channels=channels,
+        dtype=dtype,
+        callback=callback,
+    )
 
 
 def create_stream(device, samplerate, channels, callback):
     if sd is None:
         raise RuntimeError("sounddevice not available")
-    return sd.Stream(device=device, samplerate=samplerate, channels=channels, callback=callback)
+    return sd.Stream(
+        device=device, samplerate=samplerate, channels=channels, callback=callback
+    )
 
 
 def get_audio_devices():
@@ -103,6 +111,10 @@ def get_audio_devices():
                     seen.add(d.get("index"))
                     wasapi_devices.append(d)
 
-        return {"devices": wasapi_devices, "hostapis": wasapi_list, "default_device": default_dev}
+        return {
+            "devices": wasapi_devices,
+            "hostapis": wasapi_list,
+            "default_device": default_dev,
+        }
     except Exception as e:
         return {"error": str(e), "trace": traceback.format_exc()}

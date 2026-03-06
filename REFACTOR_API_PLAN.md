@@ -1,30 +1,30 @@
+## Progress / TODO
+
+この文書は進捗追跡用の TODO リストとして使います。作業は小さなステップに分割し、完了したらここに反映します。現在の TODO はリポジトリの `manage_todo_list` と同期されています。
+1. Api をファサード化し Pipeline を注入する — in-progress
+2. `pymic/pipeline.py` に `BypassPipeline` 骨組みを実装 — not-started
+3. `pymic/processors.py` に各 Processor クラス（Gate/HPF/Compressor/DeHiss/NR）を実装 — not-started
+10. ドキュメント更新: `REFACTOR_API_PLAN.md` に進捗を記録 — not-started
+3) `Recorder` 非同期化（中優先）
+  - I/O / ffmpeg 呼び出しをワーカへ分離し、callback 側はキュー投入のみ。現状 `Recorder` は callable sink として動作します（互換性維持）。
 ## REFACTOR — API とパイプラインのオブジェクト指向再設計
 
 目的: `Api` を外部向けの薄いファサードにし、録音・バイパス（パイプライン）・トランスクリプション・デバイス・Sink を明確なインターフェースとして切り出す。中心は `Pipeline` で、エフェクトチェーンと出力（sinks）を管理する。
 
 概要:
-- 現状: `pymic/api.py` に GUI API、リアルタイム処理、設定管理、sink 登録など多くの責務が集中している。
-- 改善方針: 責務分離 (SRP)、依存注入、リアルタイム callback を短く保つ（I/O は必ず別ワーカへ）。
 
 推奨インターフェース（概要）
-- `DeviceManager` / `Device`
   - 責務: デバイス列挙 / 選択 / ストリーム生成ラッパ。
   - 主なメソッド: `list_input_devices()`, `list_output_devices()`, `create_stream(config)`
-- `Pipeline`
   - 責務: リアルタイム音声処理（エフェクトチェーン適用・設定スナップショット管理・入力→出力・sink への dispatch）。
   - 主なメソッド: `start(config)`, `stop()`, `apply_settings(settings_snapshot)`, `process_frame(frames)->frames`, `get_levels()`
-- `Sink` (抽象)
   - 責務: フレームを受け取り処理する。I/O や外部呼び出しは内部で非同期化する。
   - メソッド: `consume(frames: np.ndarray, meta: dict)`
-- `SinkManager`
   - 責務: Sink 登録/解除、配送、バックプレッシャ/ポリシー管理、メトリクス。
   - メソッド: `register_sink(sink, policy)`, `unregister_sink(id)`, `dispatch(frames)`
-- `Recorder` / `RecorderSink`
   - 責務: 録音データの永続化（WAV→変換）。FFmpeg 呼び出し等の重い処理は別ワーカ/プロセスで実行。
   - メソッド: `start()`, `stop()`, `consume(...)`
-- `Transcriber` / `TranscribeSink`
   - 責務: VAD による区間抽出 → 非同期 ASR 呼び出し → 結果コールバック。
-- `SettingsStore`/`SettingsManager`
   - 責務: 設定のロード/保存/バリデーション。UI はここを経由して編集する。
 
 短期実装計画（優先度付き）
@@ -42,10 +42,6 @@
    - レベル表示をポーリングからイベントプッシュへ変更すると効率的。
 
 設計上の懸念点（現状から修正すべき点）
-- `Api` の多責務：テスト難、変更時のリスク増大。
-- Sink の暗黙契約：メタデータや状態管理が不十分。
-- 重い同期 I/O のワーカ化が未実装：callback の応答性を損なう危険。
-- 設定の race 条件：更新時の整合性が必要。
 
 提案する検証フロー
 1. ユニットテスト: 各 `Processor.process()` に対する小さな numpy 入力テスト。
@@ -53,14 +49,41 @@
 3. 負荷テスト: 重い sink を登録して dispatch の挙動を測る。
 
 マイグレーション方針
-- 段階的に移行し、`Api` 互換の thin adapter を残すことで UI 側への影響を最小化する。
 
 作業候補（次のアクション、選択してください）
-- A: `Api` の分割と `Pipeline` の骨組み実装（推奨初手）
-- B: `Sink` インターフェース導入と `SinkManager` の改良
-- C: `Recorder` の非同期化（ffmpeg 呼び出しを別ワーカへ）
-- D: フロントのポーリング→プッシュ化
 
----
 
 ファイルを更新しました。次はどれを実装しますか？（A/B/C/D のいずれか、または優先順を指示してください。）
+
+## Progress / TODO
+
+この文書は進捗追跡用の TODO リストとして使います。作業は小さなステップに分割し、完了したらここに反映します。現在の TODO は `manage_todo_list` と同期されています。
+
+- [x] Api をファサード化し Pipeline を注入する
+- [x] `pymic/pipeline.py` に `BypassPipeline` 骨組みを実装
+- [x] `pymic/processors.py` に各 Processor クラス（Gate/HPF/Compressor/DeHiss/NR）を実装
+- [x] `Sink` 抽象を定義し `SinkManager` を改良
+- [x] `Recorder` を `RecorderSink` に移行し非同期化（ffmpeg ワーカ）
+- [x] 設定のスナップショット機構を実装し Pipeline に適用
+- [x] ユニットテスト: Processor 単体テストを追加
+- [ ] 統合テスト: `Api`→`Pipeline`→`Sink` フローの検証
+- [x] 統合テスト: `Api`→`Pipeline`→`Sink` フローの検証
+- [ ] フロントエンドの必要な適応（最小限）を実施
+- [x] ドキュメント更新: `REFACTOR_API_PLAN.md` に進捗を記録
+
+変更履歴:
+- `pymic/pipeline.py` に `snapshot()` と `apply_snapshot()` を追加しました。
+- `tests/test_processors.py` を追加し、Processor の基本動作を検証して 4 件のテストが通りました。
+
+次の短期作業:
+- `統合テスト` を作成して `Api`→`Pipeline`→`Sink` のエンドツーエンド動作を確認します。
+- 必要に応じてフロントエンドの最小調整を行います。
+
+（自動化: 進捗は `manage_todo_list` にも反映済みです）
+
+## Recent automated changes
+
+- Extracted `BypassController` to manage stream/pipeline lifecycle and VAD.
+- Delegated `start_bypass`, `stop_bypass`, and `set_transcribe_enabled` from `Api` to `BypassController`.
+- Removed `numpy` usage from `pymic/api.py`; numerical work resides in `Recorder`, `Pipeline`, and `BypassController`.
+- Ran full test suite: `20 passed`.
