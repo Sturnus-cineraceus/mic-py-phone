@@ -362,7 +362,9 @@ class Api:
             return self._recorder.start(target_path, samplerate, channels)
         except Exception as e:
             return {"error": str(e), "trace": traceback.format_exc()}
-            return {"error": "not recording"}
+
+    def stop_record(self):
+        """Stop recording and convert the temporary WAV to the final file."""
         try:
             had_record_stream = self._record_stream is not None
             try:
