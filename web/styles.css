@@ -20,6 +20,10 @@ body{
   padding:18px 28px;
   background:linear-gradient(90deg, #2563eb22, transparent);
 }
+
+/* Branding title and subtitle in header */
+.site-header .site-brand h1{ margin:0; font-size:1.25rem; font-weight:700 }
+.site-header .site-subtitle{ margin:0; font-size:0.95rem; color:var(--accent) }
 .container{max-width:900px;margin:36px auto;padding:0 20px}
 .card{background:var(--card);padding:20px;border-radius:12px;box-shadow:0 6px 18px rgba(16,24,40,0.08)}
 .controls{margin-top:12px}
