@@ -1,17 +1,11 @@
 import time
 import numpy as np
 
-from pymic.api import Api
-from pymic.pipeline import BypassPipeline
+from pymic.sink_manager import SinkManager
 
 
-def test_api_pipeline_sink_dispatch():
-    api = Api()
-
-    # inject a pipeline instance and apply current settings
-    pipeline = BypassPipeline(samplerate=16000, channels=1)
-    api._pipeline = pipeline
-    api._maybe_apply_pipeline_settings()
+def test_sink_manager_dispatch():
+    mgr = SinkManager()
 
     received = []
 
@@ -19,14 +13,14 @@ def test_api_pipeline_sink_dispatch():
         # store a copy to avoid shared-memory surprises
         received.append(np.asarray(frames, dtype=np.float32).copy())
 
-    resp = api.register_sink(sink_fn)
+    resp = mgr.register(sink_fn)
     assert resp.get("ok") is True
     sid = resp.get("id")
 
     try:
         # dispatch a small test buffer
         frames = np.ones((16, 1), dtype=np.float32) * 0.2
-        api._dispatch_sinks(frames)
+        mgr.dispatch(frames)
 
         # wait for worker to process queue
         deadline = time.time() + 1.0
@@ -41,6 +35,6 @@ def test_api_pipeline_sink_dispatch():
 
     finally:
         try:
-            api.unregister_sink(sid)
+            mgr.unregister(sid)
         except Exception:
             pass
