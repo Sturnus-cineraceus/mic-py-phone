@@ -47,64 +47,18 @@ function onTranscribeToggle(e){
     }
   }catch(err){ /* ignore */ }
 }
+// Note: utility functions `strengthLabel`, `toPercent01` and `showToast`
+// and feature modules are provided by files under `js/` and loaded before this script.
+// We keep this file as the entry-point that wires UI events.
 
-function strengthLabel(percent){
-  const p = Number(percent);
-  if(p < 34) return `弱(${p}%)`;
-  if(p < 67) return `中(${p}%)`;
-  return `強(${p}%)`;
+// Ensure status element is set up by the bypass module; if not, provide fallback initializer
+if(typeof setupStatusElement === 'function'){
+  try{ setupStatusElement(); }catch(e){}
 }
 
-function toPercent01(v){
-  const n = Number(v);
-  if(Number.isNaN(n)) return 50;
-  return Math.max(0, Math.min(100, Math.round(n * 100)));
-}
-
-// Toast helper: shows an ephemeral notification (no file paths shown)
-function showToast(message, type){
-  try{
-    const area = document.getElementById('toastArea');
-    if(!area) return;
-    const t = document.createElement('div');
-    t.className = 'toast' + (type ? ' ' + type : '');
-    t.textContent = message;
-    area.appendChild(t);
-    // trigger show animation
-    window.requestAnimationFrame(()=> t.classList.add('show'));
-    // auto-dismiss
-    setTimeout(()=>{
-      t.classList.remove('show');
-      setTimeout(()=>{ if(t.parentNode) t.parentNode.removeChild(t); }, 300);
-    }, 3000);
-  }catch(e){ /* no-op */ }
-}
-
-// 自動読み込み: 起動時にデバイス一覧を取得してプルダウンを埋める
-function scheduleLoadAudioDevices(){
-  const runLoad = () => {
-    if(window.pywebview && window.pywebview.api){
-      loadAudioDevices();
-    } else {
-      window.addEventListener('pywebviewready', loadAudioDevices);
-    }
-  };
-
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', runLoad);
-  } else {
-    runLoad();
-  }
-}
-
-// 起動時に一度だけ実行
-scheduleLoadAudioDevices();
-
-// initialize audio console accordion on DOM ready
-if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', setupAudioAccordion);
-} else {
-  setupAudioAccordion();
+// Ensure UI accordion is initialized
+if(typeof setupAudioAccordion === 'function'){
+  try{ setupAudioAccordion(); }catch(e){}
 }
 
 // Setup gain control UI and bind to backend
