@@ -17,6 +17,13 @@ class RecorderSink:
     """
 
     def __init__(self, target_path: str, samplerate: int = 44100, channels: int = 1):
+        """録音シンクを初期化し、一時 WAV ファイルを開く。
+
+        Args:
+            target_path: 出力先ファイルパス（.mp3 以外の拡張子は .mp3 に変換される）。
+            samplerate: サンプルレート（Hz）。デフォルトは 44100。
+            channels: チャンネル数。デフォルトは 1。
+        """
         self.target_path = str(target_path)
         if not self.target_path.lower().endswith(".mp3"):
             base = os.path.splitext(self.target_path)[0]
@@ -39,6 +46,12 @@ class RecorderSink:
         self._closed = False
 
     def consume(self, frames, meta=None):
+        """フレームを受け取り一時 WAV ファイルに書き込む。
+
+        Args:
+            frames: float32 の numpy 配列（値域 -1.0〜1.0）。
+            meta: 未使用のメタデータ引数（互換性のために保持）。
+        """
         try:
             if frames is None or self._closed:
                 return
@@ -55,7 +68,12 @@ class RecorderSink:
             pass
 
     def stop(self):
-        # close wav and start conversion thread
+        """録音を停止し、ffmpeg で WAV を MP3 に変換するバックグラウンドスレッドを起動する。
+
+        Returns:
+            dict: 成功時は {"ok": True, "path": <出力パス>, "converting": True}、
+                  失敗時は {"error": ...}。
+        """
         try:
             if not self._closed:
                 try:
@@ -65,6 +83,7 @@ class RecorderSink:
                 self._closed = True
 
             def _convert_and_cleanup(tmp_path, out_path):
+                """一時 WAV ファイルを ffmpeg で MP3 に変換し、完了後に一時ファイルを削除する。"""
                 try:
                     cmd = [
                         "ffmpeg",
@@ -113,6 +132,11 @@ class Recorder:
     """
 
     def __init__(self, sink_mgr):
+        """レコーダーを初期化する。
+
+        Args:
+            sink_mgr: フレームの配送管理に使用する SinkManager インスタンス。
+        """
         self.sink_mgr = sink_mgr
         self._sid = None
         self._sink_obj = None
@@ -120,9 +144,26 @@ class Recorder:
         self.last_input_rms = 0.0
 
     def is_recording(self):
+        """現在録音中かどうかを返す。
+
+        Returns:
+            bool: 録音中の場合は True。
+        """
         return self._sid is not None
 
     def start(self, target_path: str, samplerate: int, channels: int):
+        """録音を開始する。
+
+        RecorderSink を作成して SinkManager に登録し、入力ストリームを起動する。
+
+        Args:
+            target_path: 出力先ファイルパス。
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+
+        Returns:
+            dict: 成功時は {"ok": True}、失敗時は {"error": ...}。
+        """
         if self.is_recording():
             return {"error": "already recording"}
         if not target_path:
@@ -142,6 +183,7 @@ class Recorder:
             try:
 
                 def _callback(indata, frames, time, status):
+                    """入力フレームを RMS 計算後にシンクへ配送する sounddevice 入力コールバック。"""
                     try:
                         arr = indata.copy()
                         # use numpy here to compute RMS
@@ -184,6 +226,12 @@ class Recorder:
             return {"error": str(e)}
 
     def stop(self):
+        """録音を停止し、ストリームとシンクを後片付けする。
+
+        Returns:
+            dict: 成功時は RecorderSink.stop() の戻り値（MP3 変換情報を含む）、
+                  録音していない場合は {"error": "not recording"}。
+        """
         if not self.is_recording():
             return {"error": "not recording"}
         try:

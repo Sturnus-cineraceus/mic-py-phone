@@ -7,6 +7,11 @@ from .api import Api
 
 
 def _configure_logging():
+    """ルートロガーを設定する。
+
+    ファイルハンドラ（ローテーション付き）とコンソールハンドラを追加する。
+    すでにハンドラが設定済みの場合は何もしない（二重設定を防ぐ）。
+    """
     try:
         root = logging.getLogger()
         # avoid double-configuring if already set up
@@ -38,6 +43,10 @@ def _configure_logging():
 
 
 def main():
+    """アプリケーションを起動する。
+
+    ロギングを設定し、webview ウィンドウを作成して pywebview のイベントループを開始する。
+    """
     # configure logging early so modules can log failures to file
     _configure_logging()
 

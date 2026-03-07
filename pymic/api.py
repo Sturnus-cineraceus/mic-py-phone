@@ -25,9 +25,16 @@ HAS_PEDALBOARD = all(
 
 
 class Api:
-    """Audio bypass API: list/select devices and start/stop a direct input->output passthrough."""
+    """オーディオバイパス API。
+
+    Audio bypass API: list/select devices and start/stop a direct input->output passthrough.
+
+    デバイスの列挙・選択、バイパスの開始/停止、各種エフェクト設定、
+    録音制御、設定の保存/読み込みを JavaScript フロントエンドに提供する。
+    """
 
     def __init__(self):
+        """API インスタンスを初期化し、設定を読み込んでコンポーネントをセットアップする。"""
         # recording state (delegated to Recorder)
         self.selected_input = None
         self.selected_output = None
@@ -91,7 +98,13 @@ class Api:
     # Settings persistence API (called from JavaScript)
 
     def save_settings(self):
-        """Save current settings to the user data directory."""
+        """現在の設定をユーザーデータディレクトリに保存する。
+
+        Save current settings to the user data directory.
+
+        Returns:
+            dict: {"ok": True, "path": <保存パス>} または {"error": ...}。
+        """
         try:
             settings = self._collect_settings()
             self._settings_manager.save(settings)
@@ -103,7 +116,13 @@ class Api:
             return {"error": str(e)}
 
     def load_settings(self):
-        """Load settings from disk and apply them."""
+        """設定をディスクから読み込んで適用する。
+
+        Load settings from disk and apply them.
+
+        Returns:
+            dict: {"ok": True, "settings": dict} または {"error": ...}。
+        """
         try:
             settings = self._settings_manager.load()
             self._apply_settings(settings)
@@ -112,7 +131,13 @@ class Api:
             return {"error": str(e)}
 
     def reset_settings(self):
-        """Reset all settings to defaults and return them."""
+        """全設定をデフォルト値にリセットして返す。
+
+        Reset all settings to defaults and return them.
+
+        Returns:
+            dict: {"ok": True, "settings": dict} または {"error": ...}。
+        """
         try:
             defaults = self._settings_manager.reset_defaults()
             self._apply_settings(defaults)
@@ -121,10 +146,19 @@ class Api:
             return {"error": str(e)}
 
     def get_settings_path(self):
-        """Return the path where settings are stored."""
+        """設定ファイルの保存パスを返す。
+
+        Return the path where settings are stored.
+        """
         return {"path": str(self._settings_manager.settings_path)}
 
     def get_easy_settings(self):
+        """現在の全エフェクト設定を簡易形式で返す。
+
+        Returns:
+            dict: エンジン名と各エフェクト（NR・ゲート・HPF・コンプレッサー・
+                  デヒス）の enabled/strength をまとめた辞書。
+        """
         try:
             return {
                 "engine": "pedalboard" if Pedalboard is not None else "native",
@@ -153,9 +187,19 @@ class Api:
             return {"error": str(e)}
 
     def _to_strength01(self, value):
-        """
+        """入力を 0.0〜1.0 の float に変換して返す。
+
         Convert input to a float in the 0.0-1.0 range.
         Raises ValueError for non-numeric or out-of-range inputs.
+
+        Args:
+            value: 変換する値。
+
+        Returns:
+            float: 0.0〜1.0 の強度値。
+
+        Raises:
+            ValueError: 数値でない、または範囲外の場合。
         """
         try:
             s = float(value)
@@ -166,6 +210,7 @@ class Api:
         return s
 
     def _get_gate_strength(self):
+        """ゲートしきい値から 0〜1 の強度値を計算して返す。"""
         try:
             s = (float(self.gate_threshold_db) + 70.0) / 45.0
             return max(0.0, min(1.0, s))
@@ -173,6 +218,7 @@ class Api:
             return 0.0
 
     def _get_hpf_strength(self):
+        """ハイパスカットオフ周波数から 0〜1 の強度値を計算して返す。"""
         try:
             s = (float(self.hpf_cutoff_hz) - 50.0) / 150.0
             return max(0.0, min(1.0, s))
@@ -180,6 +226,7 @@ class Api:
             return 0.0
 
     def _get_comp_strength(self):
+        """コンプレッサー比率から 0〜1 の強度値を計算して返す。"""
         try:
             s = (float(self.comp_ratio) - 2.0) / 6.0
             return max(0.0, min(1.0, s))
@@ -187,6 +234,11 @@ class Api:
             return 0.0
 
     def _collect_settings(self):
+        """現在の全設定値をまとめた辞書を生成して返す。
+
+        Returns:
+            dict: gain_db、input_device、output_device、各エフェクト設定を含む辞書。
+        """
         try:
             gain_db = 20.0 * math.log10(self.volume) if self.volume > 0 else 0.0
         except Exception:
@@ -226,6 +278,12 @@ class Api:
         }
 
     def _apply_settings(self, settings: dict):
+        """設定辞書を読み込んで各内部プロパティに反映する。
+
+        Args:
+            settings: gain_db や各エフェクト設定を含む辞書。
+                      辞書でない値は無視される。
+        """
         try:
             try:
                 if getattr(self, "_logger", None) is not None:
@@ -306,7 +364,10 @@ class Api:
             pass
 
     def _maybe_apply_pipeline_settings(self):
-        """If a pipeline exists, apply the current settings snapshot to it."""
+        """パイプラインが存在する場合、現在の設定スナップショットを適用する。
+
+        If a pipeline exists, apply the current settings snapshot to it.
+        """
         try:
             # Collect snapshot once and log it for diagnostics
             settings = self._collect_settings()
@@ -331,11 +392,21 @@ class Api:
             pass
 
     def get_audio_devices(self):
-        self._logger.info("API: get_audio_devices called")
+        """利用可能な WASAPI 音声デバイスの一覧を返す。
+
+        Returns:
+            dict: デバイスリストとデフォルトデバイス情報を含む辞書。
+        """
         return audio_device.get_audio_devices()
 
     # --- Recording / Save dialog API ---
     def open_save_file_dialog(self):
+        """ネイティブの「名前を付けて保存」ダイアログを表示し、選択パスを返す。
+
+        Returns:
+            dict: {"path": <選択パス>} または {"path": None}（キャンセル時）、
+                  エラー時は {"error": ...}。
+        """
         try:
             # Use tkinter filedialog to show native save dialog
             import tkinter as tk
@@ -367,9 +438,17 @@ class Api:
             return {"error": str(e)}
 
     def start_record(self, target_path: str):
-        """Begin recording from the selected input device and stream samples to
+        """選択中の入力デバイスから録音を開始する。
+
+        Begin recording from the selected input device and stream samples to
         a temporary WAV file in the same directory as `target_path`.
         The final MP3 will be produced when `stop_record` is called.
+
+        Args:
+            target_path: 録音結果の出力先ファイルパス（.mp3）。
+
+        Returns:
+            dict: {"ok": True} または {"error": ...}。
         """
         if not audio_device.is_available():
             return {"error": "sounddevice not available"}
@@ -392,7 +471,13 @@ class Api:
             return {"error": str(e), "trace": traceback.format_exc()}
 
     def stop_record(self):
-        """Stop recording and convert the temporary WAV to the final file."""
+        """録音を停止し、一時 WAV を最終ファイルに変換する。
+
+        Stop recording and convert the temporary WAV to the final file.
+
+        Returns:
+            dict: 変換情報（RecorderSink.stop() の戻り値）または {"error": ...}。
+        """
         try:
             had_record_stream = self._record_stream is not None
             try:
@@ -433,6 +518,14 @@ class Api:
             return {"error": str(e), "trace": traceback.format_exc()}
 
     def set_input_device(self, index):
+        """入力デバイスを選択する。
+
+        Args:
+            index: 選択するデバイスのインデックス。
+
+        Returns:
+            dict: {"selected_input": int} または {"error": ...}。
+        """
         try:
             idx = int(index)
             self.selected_input = idx
@@ -442,6 +535,14 @@ class Api:
             return {"error": "invalid index", "detail": str(e)}
 
     def set_output_device(self, index):
+        """出力デバイスを選択する。
+
+        Args:
+            index: 選択するデバイスのインデックス。
+
+        Returns:
+            dict: {"selected_output": int} または {"error": ...}。
+        """
         try:
             idx = int(index)
             self.selected_output = idx
@@ -451,9 +552,19 @@ class Api:
             return {"error": "invalid index", "detail": str(e)}
 
     def get_selected_devices(self):
+        """現在選択中の入出力デバイスインデックスを返す。
+
+        Returns:
+            dict: {"input": int|None, "output": int|None}。
+        """
         return {"input": self.selected_input, "output": self.selected_output}
 
     def get_gain_db(self):
+        """現在のゲイン値を dB で返す。
+
+        Returns:
+            dict: {"gain_db": float} または {"error": ...}。
+        """
         try:
             # avoid log10(0)
             if self.volume <= 0:
@@ -465,7 +576,13 @@ class Api:
             return {"error": str(e)}
 
     def get_levels(self):
-        """Return recent input/output levels (linear RMS and dB)."""
+        """最近の入出力レベル（線形 RMS および dB）を返す。
+
+        Return recent input/output levels (linear RMS and dB).
+
+        Returns:
+            dict: input_rms、output_rms、input_db、output_db を含む辞書。
+        """
         try:
             # Prefer pipeline/bypass controller levels when available
             in_rms = 0.0
@@ -501,10 +618,16 @@ class Api:
 
     # Sink management -------------------------------------------------
     def register_sink(self, sink_callable):
-        """Register a sink callable that will be invoked with processed frames.
+        """処理済みフレームを受け取るシンクを登録する。
 
+        Register a sink callable that will be invoked with processed frames.
         The callable will be called as sink(frames).
-        Returns an integer sink id which can be used to unregister.
+
+        Args:
+            sink_callable: フレームを受け取るコールバック関数またはオブジェクト。
+
+        Returns:
+            dict: {"ok": True, "id": <sink_id>} または {"error": ...}。
         """
         try:
             return self._sink_mgr.register(sink_callable)
@@ -512,14 +635,25 @@ class Api:
             return {"error": str(e)}
 
     def unregister_sink(self, sid):
+        """指定 ID のシンクを登録解除する。
+
+        Args:
+            sid: `register_sink` が返したシンク ID。
+
+        Returns:
+            dict: {"ok": True} または {"error": ...}。
+        """
         try:
             return self._sink_mgr.unregister(sid)
         except Exception as e:
             return {"error": str(e)}
 
     def _dispatch_sinks(self, frames):
-        """Call all registered sinks with a copy of frames (non-blocking).
+        """登録済みの全シンクにフレームのコピーを非同期で送る。
 
+        Call all registered sinks with a copy of frames (non-blocking).
+
+        シンク内の例外は握りつぶし、オーディオコールバックを不安定にしないようにする。
         Exceptions in sinks are caught and ignored to avoid destabilizing the
         audio callback.
         """
@@ -530,6 +664,14 @@ class Api:
 
     # Transcription toggle and VAD helper (experiment)
     def set_transcribe_enabled(self, enabled: bool):
+        """文字起こし（VAD）機能の有効/無効を切り替える。
+
+        Args:
+            enabled: True で有効化、False で無効化。
+
+        Returns:
+            dict: {"enabled": bool} または {"error": ...}。
+        """
         try:
             # delegate to bypass controller if available
             bypass_controller = getattr(self, "_bypass_controller", None)
@@ -542,6 +684,14 @@ class Api:
             return {"error": str(e)}
 
     def set_gain_db(self, db):
+        """ゲイン値を dB で設定する。
+
+        Args:
+            db: 設定するゲイン値（dB）。
+
+        Returns:
+            dict: {"gain_db": float} または {"error": ...}。
+        """
         try:
             dbf = float(db)
             self.volume = float(10.0 ** (dbf / 20.0))
@@ -554,6 +704,11 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def get_gate_settings(self):
+        """現在のゲート設定を返す。
+
+        Returns:
+            dict: enabled、threshold_db、attack_ms、release_ms を含む辞書。
+        """
         try:
             return {
                 "enabled": bool(self.gate_enabled),
@@ -565,6 +720,14 @@ class Api:
             return {"error": str(e)}
 
     def set_gate_release_ms(self, ms):
+        """ゲートのリリース時間を設定する。
+
+        Args:
+            ms: リリース時間（ミリ秒）。
+
+        Returns:
+            dict: {"release_ms": float} または {"error": ...}。
+        """
         try:
             self.gate_release_ms = float(ms)
             try:
@@ -576,6 +739,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_gate_strength(self, strength):
+        """ゲート強度（0〜1）を設定し、しきい値・アタック・リリースを更新する。
+
+        Args:
+            strength: ゲート強度（0.0〜1.0）。
+
+        Returns:
+            dict: {"strength": float, "threshold_db": float} または {"error": ...}。
+        """
         try:
             s = self._to_strength01(strength)
             self.gate_threshold_db = -70.0 + (45.0 * s)
@@ -594,6 +765,11 @@ class Api:
 
     # High-pass filter API
     def get_hpf_settings(self):
+        """現在のハイパスフィルタ設定を返す。
+
+        Returns:
+            dict: enabled、cutoff_hz を含む辞書。
+        """
         try:
             return {
                 "enabled": bool(self.hpf_enabled),
@@ -604,6 +780,11 @@ class Api:
 
     # Noise reduction (noisereduce) API
     def get_nr_settings(self):
+        """現在のノイズ低減設定を返す。
+
+        Returns:
+            dict: enabled、strength を含む辞書。
+        """
         try:
             return {
                 "enabled": bool(self.nr_enabled),
@@ -613,6 +794,14 @@ class Api:
             return {"error": str(e)}
 
     def set_nr_enabled(self, enabled):
+        """ノイズ低減の有効/無効を切り替える。
+
+        Args:
+            enabled: True で有効化、False で無効化。
+
+        Returns:
+            dict: {"enabled": bool} または {"error": ...}。
+        """
         try:
             self.nr_enabled = bool(enabled)
             try:
@@ -624,6 +813,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_nr_strength(self, strength):
+        """ノイズ低減強度を設定する。
+
+        Args:
+            strength: ノイズ低減強度（0.0〜1.0）。
+
+        Returns:
+            dict: {"strength": float} または {"error": ...}。
+        """
         try:
             s = self._to_strength01(strength)
             self.nr_strength = s
@@ -637,6 +834,11 @@ class Api:
 
     # Final noise adjustment (post-gain de-hiss) API
     def get_final_noise_settings(self):
+        """現在のデヒス（最終ノイズ調整）設定を返す。
+
+        Returns:
+            dict: enabled、strength、threshold_db、lpf_hz を含む辞書。
+        """
         try:
             return {
                 "enabled": bool(self.dehiss_enabled),
@@ -648,6 +850,14 @@ class Api:
             return {"error": str(e)}
 
     def set_final_noise_enabled(self, enabled):
+        """デヒス（最終ノイズ調整）の有効/無効を切り替える。
+
+        Args:
+            enabled: True で有効化、False で無効化。
+
+        Returns:
+            dict: {"enabled": bool} または {"error": ...}。
+        """
         try:
             self.dehiss_enabled = bool(enabled)
             try:
@@ -659,6 +869,15 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_final_noise_strength(self, strength):
+        """デヒス強度を設定し、しきい値・LPF カットオフを更新する。
+
+        Args:
+            strength: デヒス強度（0.0〜1.0）。
+
+        Returns:
+            dict: {"strength": float, "threshold_db": float, "lpf_hz": float}
+                  または {"error": ...}。
+        """
         try:
             s = self._to_strength01(strength)
             self.dehiss_strength = s
@@ -679,6 +898,11 @@ class Api:
 
     # Compressor API
     def get_compressor_settings(self):
+        """現在のコンプレッサー設定を返す。
+
+        Returns:
+            dict: enabled、threshold_db、ratio、attack_ms、release_ms、makeup_db を含む辞書。
+        """
         try:
             return {
                 "enabled": bool(self.comp_enabled),
@@ -692,6 +916,14 @@ class Api:
             return {"error": str(e)}
 
     def set_compressor_enabled(self, enabled):
+        """コンプレッサーの有効/無効を切り替える。
+
+        Args:
+            enabled: True で有効化、False で無効化。
+
+        Returns:
+            dict: {"enabled": bool} または {"error": ...}。
+        """
         try:
             self.comp_enabled = bool(enabled)
             try:
@@ -703,6 +935,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_compressor_threshold_db(self, db):
+        """コンプレッサーの圧縮開始しきい値を設定する。
+
+        Args:
+            db: しきい値（dB）。
+
+        Returns:
+            dict: {"threshold_db": float} または {"error": ...}。
+        """
         try:
             self.comp_threshold_db = float(db)
             try:
@@ -714,6 +954,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_compressor_ratio(self, ratio):
+        """コンプレッサーの圧縮比を設定する。
+
+        Args:
+            ratio: 圧縮比（1.0 以上）。
+
+        Returns:
+            dict: {"ratio": float} または {"error": ...}。
+        """
         try:
             r = float(ratio)
             if r < 1.0:
@@ -728,6 +976,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_compressor_attack_ms(self, ms):
+        """コンプレッサーのアタック時間を設定する。
+
+        Args:
+            ms: アタック時間（ミリ秒、0 より大きい値）。
+
+        Returns:
+            dict: {"attack_ms": float} または {"error": ...}。
+        """
         try:
             m = float(ms)
             if m <= 0:
@@ -742,6 +998,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_compressor_release_ms(self, ms):
+        """コンプレッサーのリリース時間を設定する。
+
+        Args:
+            ms: リリース時間（ミリ秒、0 より大きい値）。
+
+        Returns:
+            dict: {"release_ms": float} または {"error": ...}。
+        """
         try:
             m = float(ms)
             if m <= 0:
@@ -756,6 +1020,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_compressor_makeup_db(self, db):
+        """コンプレッサーのメイクアップゲインを設定する。
+
+        Args:
+            db: メイクアップゲイン（dB）。
+
+        Returns:
+            dict: {"makeup_db": float} または {"error": ...}。
+        """
         try:
             self.comp_makeup_db = float(db)
             try:
@@ -767,6 +1039,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_compressor_strength(self, strength):
+        """コンプレッサー強度（0〜1）を設定し、比率・しきい値・ゲインを更新する。
+
+        Args:
+            strength: コンプレッサー強度（0.0〜1.0）。
+
+        Returns:
+            dict: {"strength", "ratio", "threshold_db", "makeup_db"} または {"error": ...}。
+        """
         try:
             s = self._to_strength01(strength)
             self.comp_ratio = 2.0 + (6.0 * s)
@@ -788,6 +1068,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_hpf_enabled(self, enabled):
+        """ハイパスフィルタの有効/無効を切り替える。
+
+        Args:
+            enabled: True で有効化、False で無効化。
+
+        Returns:
+            dict: {"enabled": bool} または {"error": ...}。
+        """
         try:
             self.hpf_enabled = bool(enabled)
             try:
@@ -799,6 +1087,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_hpf_cutoff_hz(self, hz):
+        """ハイパスフィルタのカットオフ周波数を設定する。
+
+        Args:
+            hz: カットオフ周波数（Hz、0 より大きい値）。
+
+        Returns:
+            dict: {"cutoff_hz": float} または {"error": ...}。
+        """
         try:
             hzf = float(hz)
             if hzf <= 0:
@@ -813,6 +1109,14 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def set_hpf_strength(self, strength):
+        """ハイパスフィルタ強度（0〜1）を設定し、カットオフ周波数を更新する。
+
+        Args:
+            strength: フィルタ強度（0.0〜1.0）。
+
+        Returns:
+            dict: {"strength": float, "cutoff_hz": float} または {"error": ...}。
+        """
         try:
             s = self._to_strength01(strength)
             self.hpf_cutoff_hz = 50.0 + (150.0 * s)
@@ -828,6 +1132,11 @@ class Api:
             return {"error": "invalid value", "detail": str(e)}
 
     def get_transcribe_settings(self):
+        """現在の文字起こし（VAD）設定を返す。
+
+        Returns:
+            dict: enabled、vad_window_ms、vad_silence_ms を含む辞書。
+        """
         try:
             return {
                 "enabled": bool(self.transcribe_enabled),
@@ -838,6 +1147,11 @@ class Api:
             return {"error": str(e)}
 
     def is_running(self):
+        """バイパスストリームが現在動作中かどうかを返す。
+
+        Returns:
+            dict: {"running": bool}。
+        """
         try:
             bypass_controller = getattr(self, "_bypass_controller", None)
             if bypass_controller is not None:
@@ -847,7 +1161,14 @@ class Api:
         return {"running": self.stream is not None}
 
     def start_bypass(self):
-        # Delegate to BypassController if available
+        """バイパスを開始する。
+
+        選択中の入出力デバイスを使ってリアルタイム音声処理を開始する。
+        デバイスが未選択の場合はシステムデフォルトを試みる。
+
+        Returns:
+            dict: {"running": True} または {"error": ...}。
+        """
         try:
             # If devices not explicitly selected, try to use system defaults
             try:
@@ -883,6 +1204,11 @@ class Api:
         return {"error": "unable to start bypass"}
 
     def stop_bypass(self):
+        """バイパスを停止する。
+
+        Returns:
+            dict: {"running": False} または {"error": "not running"}。
+        """
         try:
             self._logger.info("API: stop_bypass requested")
             bypass_controller = getattr(self, "_bypass_controller", None)

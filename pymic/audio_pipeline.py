@@ -20,6 +20,12 @@ _logger = logging.getLogger(__name__)
 
 
 class NoiseGate:
+    """スムーズなエンベロープ追跡によるノイズゲートクラス。
+
+    RMS を計算してアタック/リリース係数でスムージングしたエンベロープを閾値と比較し、
+    閾値未満のブロックをミュートする。
+    """
+
     def __init__(
         self,
         samplerate: int,
@@ -27,6 +33,14 @@ class NoiseGate:
         attack_ms: float = 10.0,
         release_ms: float = 100.0,
     ):
+        """ノイズゲートを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            threshold_db: ゲートのしきい値（dB）。デフォルトは -40.0。
+            attack_ms: アタック時定数（ms）。デフォルトは 10.0。
+            release_ms: リリース時定数（ms）。デフォルトは 100.0。
+        """
         self.sr = float(samplerate)
         self.threshold_db = float(threshold_db)
         self.attack_ms = float(attack_ms)
@@ -41,7 +55,14 @@ class NoiseGate:
         self.env = 0.0
 
     def _rms(self, block: np.ndarray) -> float:
-        # block shape: (frames, channels)
+        """ブロック全体の RMS 値を計算して返す。
+
+        Args:
+            block: 形状 (frames, channels) の numpy 配列。
+
+        Returns:
+            float: RMS 値。ブロックが空の場合は 0.0。
+        """
         if block.size == 0:
             return 0.0
         # compute RMS across all channels
@@ -92,6 +113,7 @@ def run_stream(
     stop_event = threading.Event()
 
     def callback(indata, outdata, frames, time_info, status):
+        """ゲインとノイズゲートを適用して出力バッファに書き込む sounddevice コールバック。"""
         if status:
             _logger.warning("Stream callback status: %s", status)
         # ensure float32
@@ -137,6 +159,14 @@ def run_stream(
 
 
 def _parse_args(argv=None):
+    """コマンドライン引数を解析して返す。
+
+    Args:
+        argv: 解析する引数リスト。None の場合は sys.argv を使用。
+
+    Returns:
+        argparse.Namespace: 解析結果。
+    """
     p = argparse.ArgumentParser(
         description="リアルタイムでゲインとノイズゲートをかける"
     )
