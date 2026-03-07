@@ -17,6 +17,13 @@ class RecorderSink:
     """
 
     def __init__(self, target_path: str, samplerate: int = 44100, channels: int = 1):
+        """RecorderSink を初期化し、一時 WAV ファイルを開く。
+
+        Args:
+            target_path: 最終的な MP3 出力先パス。
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+        """
         self.target_path = str(target_path)
         if not self.target_path.lower().endswith(".mp3"):
             base = os.path.splitext(self.target_path)[0]
@@ -39,6 +46,12 @@ class RecorderSink:
         self._closed = False
 
     def consume(self, frames, meta=None):
+        """受信した float32 フレームを WAV ファイルに書き込む。
+
+        Args:
+            frames: 音声フレームの numpy 配列（float32）。
+            meta: 未使用のメタデータ（将来の拡張用）。
+        """
         try:
             if frames is None or self._closed:
                 return
@@ -55,6 +68,12 @@ class RecorderSink:
             pass
 
     def stop(self):
+        """録音を停止し、ffmpeg でバックグラウンド変換を開始する。
+
+        Returns:
+            成功時: {"ok": True, "path": str, "converting": True}
+            失敗時: {"error": "エラーメッセージ"}
+        """
         # close wav and start conversion thread
         try:
             if not self._closed:
@@ -113,6 +132,11 @@ class Recorder:
     """
 
     def __init__(self, sink_mgr):
+        """Recorder を初期化する。
+
+        Args:
+            sink_mgr: フレームを配信する SinkManager インスタンス。
+        """
         self.sink_mgr = sink_mgr
         self._sid = None
         self._sink_obj = None
@@ -120,9 +144,21 @@ class Recorder:
         self.last_input_rms = 0.0
 
     def is_recording(self):
+        """録音中かどうかを返す。"""
         return self._sid is not None
 
     def start(self, target_path: str, samplerate: int, channels: int):
+        """録音を開始する。
+
+        Args:
+            target_path: 出力ファイルパス（MP3）。
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+
+        Returns:
+            成功時: {"ok": True}
+            失敗時: {"error": "エラーメッセージ"}
+        """
         if self.is_recording():
             return {"error": "already recording"}
         if not target_path:
@@ -184,6 +220,12 @@ class Recorder:
             return {"error": str(e)}
 
     def stop(self):
+        """録音を停止してシンクを解除し、WAV→MP3 変換を実行する。
+
+        Returns:
+            成功時: {"ok": True, "path": str, "converting": True}
+            失敗時: {"error": "エラーメッセージ"}
+        """
         if not self.is_recording():
             return {"error": "not recording"}
         try:

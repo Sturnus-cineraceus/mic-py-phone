@@ -17,76 +17,82 @@ def tmp_settings(tmp_path):
 
 
 class TestResetDefaults:
+    """SettingsManager.reset_defaults() のテスト。"""
+
     def test_returns_dict(self, tmp_settings):
-        result = tmp_settings.reset_defaults()
+        """reset_defaults() が辞書を返すことを確認する。"""
         assert isinstance(result, dict)
 
     def test_matches_default_settings(self, tmp_settings):
-        result = tmp_settings.reset_defaults()
+        """返された辞書が DEFAULT_SETTINGS と一致することを確認する。"""
         assert result == DEFAULT_SETTINGS
 
     def test_returns_independent_copy(self, tmp_settings):
-        result = tmp_settings.reset_defaults()
+        """返された辞書が DEFAULT_SETTINGS の独立したコピーであることを確認する。"""
         result["gain_db"] = 999
         assert DEFAULT_SETTINGS["gain_db"] != 999
 
 
 class TestSave:
+    """SettingsManager.save() のテスト。"""
+
     def test_creates_file(self, tmp_settings):
-        tmp_settings.save({"gain_db": 3.0})
+        """save() が設定ファイルを作成することを確認する。"""
         assert tmp_settings.settings_path.exists()
 
     def test_valid_json(self, tmp_settings):
-        data = {"gain_db": 3.0, "input_device": 1}
+        """保存されたファイルが有効な JSON であることを確認する。"""
         tmp_settings.save(data)
         with open(tmp_settings.settings_path, encoding="utf-8") as fh:
             loaded = json.load(fh)
         assert loaded == data
 
     def test_formatted_with_indent(self, tmp_settings):
-        tmp_settings.save({"gain_db": 0.0})
+        """保存された JSON がインデント付きでフォーマットされていることを確認する。"""
         raw = tmp_settings.settings_path.read_text(encoding="utf-8")
         # indent=2 means there should be newlines and spaces in the file
         assert "\n" in raw
         assert "  " in raw
 
     def test_overwrites_existing_file(self, tmp_settings):
-        tmp_settings.save({"gain_db": 1.0})
+        """save() が既存のファイルを上書きすることを確認する。"""
         tmp_settings.save({"gain_db": 2.0})
         with open(tmp_settings.settings_path, encoding="utf-8") as fh:
             loaded = json.load(fh)
         assert loaded["gain_db"] == 2.0
 
     def test_creates_parent_dirs(self, tmp_path):
-        manager = SettingsManager.__new__(SettingsManager)
+        """save() が必要な親ディレクトリを自動的に作成することを確認する。"""
         manager._settings_path = tmp_path / "nested" / "deep" / "settings.json"
         manager.save({"gain_db": 0.0})
         assert manager.settings_path.exists()
 
 
 class TestLoad:
+    """SettingsManager.load() のテスト。"""
+
     def test_returns_defaults_when_no_file(self, tmp_settings):
-        result = tmp_settings.load()
+        """ファイルが存在しない場合にデフォルト設定を返すことを確認する。"""
         assert result == DEFAULT_SETTINGS
 
     def test_loads_saved_data(self, tmp_settings):
-        data = {"gain_db": 6.0, "nr": {"enabled": True, "strength": 0.8}}
+        """保存されたデータが正しくロードされることを確認する。"""
         tmp_settings.save(data)
         result = tmp_settings.load()
         assert result == data
 
     def test_returns_defaults_on_invalid_json(self, tmp_settings):
-        tmp_settings.settings_path.write_text("not valid json", encoding="utf-8")
+        """無効な JSON ファイルの場合にデフォルト設定を返すことを確認する。"""
         result = tmp_settings.load()
         assert result == DEFAULT_SETTINGS
 
     def test_returns_defaults_when_file_contains_non_dict(self, tmp_settings):
-        tmp_settings.settings_path.write_text("[1, 2, 3]", encoding="utf-8")
+        """ファイル内容が辞書でない場合にデフォルト設定を返すことを確認する。"""
         result = tmp_settings.load()
         assert result == DEFAULT_SETTINGS
 
     def test_roundtrip(self, tmp_settings):
-        original = tmp_settings.reset_defaults()
+        """設定の保存→ロードが正しくラウンドトリップすることを確認する。"""
         original["gain_db"] = 12.0
         original["gate"]["enabled"] = True
         tmp_settings.save(original)
@@ -95,13 +101,15 @@ class TestLoad:
 
 
 class TestSettingsPath:
+    """SettingsManager.settings_path プロパティのテスト。"""
+
     def test_settings_path_property(self, tmp_settings):
-        path = tmp_settings.settings_path
+        """settings_path が Path オブジェクトで 'settings.json' という名前であることを確認する。"""
         assert isinstance(path, Path)
         assert path.name == "settings.json"
 
     def test_real_manager_uses_appdir(self):
-        """SettingsManager should place the file in the user data dir."""
+        """実際の SettingsManager がユーザデータディレクトリを使用することを確認する。"""
         manager = SettingsManager()
         assert manager.settings_path.name == "settings.json"
         # The parent directory should contain 'pymic' as part of the path

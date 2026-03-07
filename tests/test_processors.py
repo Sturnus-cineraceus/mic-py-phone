@@ -9,6 +9,7 @@ from pymic.processors import (
 
 
 def test_gate_processor_silences_below_threshold():
+    """閾値以下のフレームがゼロにミュートされることを確認する。"""
     # generate frames: first half low, second half high
     low = np.zeros((50, 1), dtype=np.float32) + 1e-6
     high = np.ones((50, 1), dtype=np.float32) * 0.2
@@ -24,6 +25,7 @@ def test_gate_processor_silences_below_threshold():
 
 
 def test_highpass_reduces_dc():
+    """DC 成分（定常入力）がハイパスフィルタで低減されることを確認する。"""
     # constant DC input should be reduced by a highpass
     frames = np.ones((100, 1), dtype=np.float32) * 0.5
     hpf = HighpassProcessor(samplerate=44100, channels=1, cutoff=80.0)
@@ -34,6 +36,7 @@ def test_highpass_reduces_dc():
 
 
 def test_compressor_reduces_above_threshold():
+    """閾値を超えるレベルのフレームにゲイン低下が適用されることを確認する。"""
     # create loud frames that exceed threshold
     frames = np.ones((10, 1), dtype=np.float32) * 1.0
     comp = CompressorProcessor(samplerate=44100, channels=1, ratio=4.0)
@@ -46,7 +49,7 @@ def test_compressor_reduces_above_threshold():
 
 
 def test_dehiss_process_no_crash_and_shape():
-    frames = np.random.randn(128, 1).astype(np.float32) * 0.01
+    """DeHissProcessor がクラッシュせず、出力形状が入力と一致することを確認する。"""
     dh = DeHissProcessor(samplerate=44100, channels=1, strength=0.5)
     out = dh.process(frames)
     assert out.shape == frames.shape

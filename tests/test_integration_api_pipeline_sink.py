@@ -5,7 +5,7 @@ from pymic.sink_manager import SinkManager
 
 
 def test_sink_manager_dispatch():
-    mgr = SinkManager()
+    """SinkManager.dispatch() がシンクにフレームを正しく配信することを確認する。"""
 
     received = []
 

@@ -71,6 +71,7 @@ class SettingsManager:
     """
 
     def __init__(self) -> None:
+        """SettingsManager を初期化し、設定ファイルのパスを決定する。"""
         data_dir = user_data_dir(APP_NAME, APP_AUTHOR)
         self._settings_path = Path(data_dir) / SETTINGS_FILENAME
 

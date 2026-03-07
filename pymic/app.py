@@ -1,3 +1,8 @@
+"""pymic アプリケーション本体。
+
+ロギングの設定と pywebview ウィンドウの起動を担うモジュール。
+"""
+
 from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
@@ -7,6 +12,11 @@ from .api import Api
 
 
 def _configure_logging():
+    """ロートロガーにファイルハンドラとコンソールハンドラを設定する。
+
+    すでにハンドラが登録済みの場合は二重設定を避けるため何もしない。
+    ログファイルはリポジトリルート直下の logs/pymic.log に書き込まれる。
+    """
     try:
         root = logging.getLogger()
         # avoid double-configuring if already set up
@@ -38,6 +48,10 @@ def _configure_logging():
 
 
 def main():
+    """アプリケーションを起動する。
+
+    ロギングを設定してから pywebview ウィンドウを生成し、メインループを開始する。
+    """
     # configure logging early so modules can log failures to file
     _configure_logging()
 

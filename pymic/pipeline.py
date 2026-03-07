@@ -24,6 +24,13 @@ class BypassPipeline:
         channels: Optional[int] = None,
         settings: Optional[Dict] = None,
     ):
+        """BypassPipeline を初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。省略時は 44100 を使用する。
+            channels: チャンネル数。省略時は 1 を使用する。
+            settings: 各プロセッサの初期設定辞書。
+        """
         self.samplerate = int(samplerate or 44100)
         self.channels = int(channels or 1)
         self.settings = settings or {}
@@ -47,7 +54,13 @@ class BypassPipeline:
         self._logger = logging.getLogger(__name__)
 
     def _init_processors(self, settings: Dict[str, Any]):
-        # instantiate processors according to settings
+        """設定辞書に基づいて各プロセッサインスタンスを生成する。
+
+        enabled フラグが False のプロセッサは None として保持される。
+
+        Args:
+            settings: ゲート・HPF・コンプレッサー・デヒスの設定を含む辞書。
+        """
         try:
             gate_cfg = settings.get("gate", {}) if isinstance(settings, dict) else {}
             hpf_cfg = settings.get("hpf", {}) if isinstance(settings, dict) else {}
@@ -145,13 +158,19 @@ class BypassPipeline:
                 pass
 
     def start(self) -> None:
+        """パイプラインを実行状態に設定する。"""
         self._running = True
 
     def stop(self) -> None:
+        """パイプラインを停止状態に設定する。"""
         self._running = False
 
     def apply_settings(self, settings_snapshot: Dict[str, Any]) -> None:
-        old = self.settings or {}
+        """設定スナップショットをパイプラインに適用し、プロセッサを再初期化する。
+
+        Args:
+            settings_snapshot: 新しい設定を含む辞書。
+        """
         new = settings_snapshot or {}
         self.settings = new
         # log what changed between old and new (shallow diff)
@@ -322,6 +341,11 @@ class BypassPipeline:
             return frames
 
     def get_levels(self) -> Dict[str, float]:
+        """最後に計測した入力・出力の RMS レベルを返す。
+
+        Returns:
+            {"input_rms": float, "output_rms": float}
+        """
         return {
             "input_rms": self._last_input_level,
             "output_rms": self._last_output_level,
