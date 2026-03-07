@@ -15,6 +15,12 @@ class BypassController:
     """
 
     def __init__(self, sink_mgr, collect_settings_callable):
+        """バイパスコントローラーを初期化する。
+
+        Args:
+            sink_mgr: フレームを配送する SinkManager インスタンス。
+            collect_settings_callable: 現在の設定スナップショットを返す呼び出し可能オブジェクト。
+        """
         self.sink_mgr = sink_mgr
         self.collect_settings = collect_settings_callable
         self.stream = None
@@ -29,10 +35,25 @@ class BypassController:
         self._logger = logging.getLogger(__name__)
 
     def is_running(self):
+        """バイパスストリームが現在動作中かどうかを返す。
+
+        Returns:
+            bool: ストリームが起動中の場合は True。
+        """
         return self.stream is not None
 
     def start(self, selected_input, selected_output):
-        self._logger.debug("[Bypass] start() called sel_in=%s sel_out=%s", selected_input, selected_output)
+        """指定デバイスでバイパスストリームを開始する。
+
+        入力デバイスの音声をパイプラインで処理して出力デバイスへ流す全二重ストリームを起動する。
+
+        Args:
+            selected_input: 入力デバイスのインデックス。
+            selected_output: 出力デバイスのインデックス。
+
+        Returns:
+            dict: 成功時は {"running": True}、失敗時は {"error": ...}。
+        """
 
         if not audio_device.is_available():
             self._logger.error("sounddevice library not available")
@@ -116,6 +137,7 @@ class BypassController:
                 pass
 
             def _scale_buffer(buf, target_dtype):
+                """バッファを target_dtype にスケーリングして変換する。整数型への変換時はクリッピングを行う。"""
                 if np.issubdtype(buf.dtype, np.integer) or np.issubdtype(
                     target_dtype, np.integer
                 ):
@@ -134,6 +156,7 @@ class BypassController:
                     return f.astype(target_dtype)
 
             def callback(indata, outdata, frames, time, status):
+                """入力を正規化してパイプライン処理し、出力バッファに書き込む sounddevice コールバック。"""
                 if status:
                     self._logger.warning("Stream callback status: %s", status)
                 try:
@@ -234,6 +257,11 @@ class BypassController:
             return {"error": str(e), "trace": traceback.format_exc()}
 
     def stop(self):
+        """バイパスストリームとパイプラインを停止し、レベル値をリセットする。
+
+        Returns:
+            dict: 成功時は {"running": False}、起動していない場合は {"error": "not running"}。
+        """
         if self.stream is None:
             return {"error": "not running"}
         try:
@@ -279,6 +307,17 @@ class BypassController:
 
     # Transcription / VAD control moved here to centralize numpy usage
     def set_transcribe_enabled(self, enabled: bool):
+        """VAD（音声区間検出）・文字起こし機能を有効または無効にする。
+
+        有効化時は内部 VAD シンクを SinkManager に登録し、
+        無効化時はシンクを登録解除する。
+
+        Args:
+            enabled: True で有効化、False で無効化。
+
+        Returns:
+            dict: {"enabled": bool} または {"error": ...}。
+        """
         try:
             enabled = bool(enabled)
             self.vad_enabled = enabled
@@ -286,6 +325,7 @@ class BypassController:
             if enabled and self._transcribe_sink_id is None:
 
                 def _vad_sink(frames_np: np.ndarray):
+                    """音声区間検出（VAD）を行い、発話終了時にログ出力するシンク関数。"""
                     try:
                         if not hasattr(_vad_sink, "buf"):
                             _vad_sink.buf = bytearray()
@@ -396,6 +436,14 @@ class BypassController:
             return {"error": str(e)}
 
     def get_levels(self):
+        """現在の入出力 RMS レベルを返す。
+
+        パイプラインが存在する場合はパイプラインから取得し、
+        そうでなければコントローラーが保持する値を返す。
+
+        Returns:
+            dict: {"input_rms": float, "output_rms": float}。
+        """
         try:
             if self._pipeline is not None:
                 return self._pipeline.get_levels()

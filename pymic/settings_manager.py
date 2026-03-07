@@ -1,4 +1,10 @@
-"""Settings persistence module for pymic.
+"""pymic の設定永続化モジュール。
+
+Settings persistence module for pymic.
+
+ユーザー設定を JSON ファイルとして保存・読み込みする。
+保存先はプラットフォームに応じたユーザーデータディレクトリ
+（例: Windows では %APPDATA%\\pymic）。
 
 Saves and loads user settings as JSON to/from the platform-appropriate
 user data directory (e.g. %APPDATA%\\pymic on Windows) using appdirs.
@@ -15,7 +21,10 @@ try:
 except ImportError:  # pragma: no cover – appdirs not installed
 
     def user_data_dir(appname: str, appauthor: str) -> str:  # type: ignore[misc]
-        """Minimal fallback: use a .pymic directory next to this file."""
+        """最小限のフォールバック: このファイルの隣に .pymic_data ディレクトリを使用する。
+
+        Minimal fallback: use a .pymic directory next to this file.
+        """
         return str(Path(__file__).parent.parent / ".pymic_data")
 
 
@@ -60,7 +69,11 @@ DEFAULT_SETTINGS: dict = {
 
 
 class SettingsManager:
-    """Persist and restore user settings to/from a JSON file.
+    """ユーザー設定を JSON ファイルとして永続化・復元するクラス。
+
+    Persist and restore user settings to/from a JSON file.
+
+    設定ファイルは :func:`appdirs.user_data_dir` が返すディレクトリに保存される。
 
     The settings file is stored in the platform-appropriate user data
     directory returned by :func:`appdirs.user_data_dir`.
@@ -71,16 +84,25 @@ class SettingsManager:
     """
 
     def __init__(self) -> None:
+        """設定マネージャーを初期化し、設定ファイルのパスを決定する。"""
         data_dir = user_data_dir(APP_NAME, APP_AUTHOR)
         self._settings_path = Path(data_dir) / SETTINGS_FILENAME
 
     @property
     def settings_path(self) -> Path:
-        """Return the absolute path to the settings file."""
+        """設定ファイルの絶対パスを返す。
+
+        Return the absolute path to the settings file.
+        """
         return self._settings_path
 
     def load(self) -> dict:
-        """Load settings from disk.
+        """設定をディスクから読み込んで返す。
+
+        Load settings from disk.
+
+        ファイルが存在しない場合や解析エラーが発生した場合は
+        :data:`DEFAULT_SETTINGS` のコピーを返す。
 
         Returns the stored settings dict, or a copy of
         :data:`DEFAULT_SETTINGS` when the file does not exist or cannot
@@ -101,7 +123,11 @@ class SettingsManager:
             return self.reset_defaults()
 
     def save(self, settings: dict) -> None:
-        """Write *settings* to disk as formatted JSON (indent=2).
+        """設定を JSON ファイルとしてディスクに書き込む（インデント付き）。
+
+        Write *settings* to disk as formatted JSON (indent=2).
+
+        親ディレクトリが存在しない場合は作成する。既存ファイルは上書きされる。
 
         Creates parent directories as needed.  Overwrites any existing
         settings file.
@@ -121,7 +147,10 @@ class SettingsManager:
         logging.getLogger(__name__).info("Saved settings to %s", str(self._settings_path))
 
     def reset_defaults(self) -> dict:
-        """Return a fresh copy of the default settings dict."""
+        """デフォルト設定の新しいコピーを返す。
+
+        Return a fresh copy of the default settings dict.
+        """
         import copy
 
         return copy.deepcopy(DEFAULT_SETTINGS)

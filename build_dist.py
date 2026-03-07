@@ -16,11 +16,20 @@ from build_tools.fetch_ffmpeg import download_and_extract_ffmpeg
 
 
 def find_pyinstaller():
+    """PATH 上の pyinstaller 実行ファイルのパスを返す。
+
+    Returns:
+        str または None: pyinstaller が見つかった場合はそのパス。見つからない場合は None。
+    """
     return shutil.which("pyinstaller")
 
 
 def main():
-    # ensure running from repo root
+    """ffmpeg をダウンロードして PyInstaller でアプリケーションをビルドする。
+
+    リポジトリルートで実行し、dist/ ディレクトリに配布物を生成する。
+    pyinstaller が見つからない場合はエラーメッセージを表示して終了する。
+    """
     repo_root = Path(__file__).parent
     os.chdir(repo_root)
 

@@ -6,7 +6,20 @@ import logging
 # - サンプルレート、チャネル数、任意のパラメータを保持し、
 #   `set_params` で柔軟にパラメータ更新できるようにする。
 class Processor:
+    """オーディオ処理ユニットの基底クラス。
+
+    サンプルレート・チャンネル数・追加パラメータを保持し、
+    `process` メソッドのオーバーライドで各種処理を実装する。
+    """
+
     def __init__(self, samplerate: int = 44100, channels: int = 1, **params):
+        """処理ユニットを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。デフォルトは 44100。
+            channels: チャンネル数。デフォルトは 1。
+            **params: サブクラス固有の追加パラメータ。
+        """
         # サンプルレート（Hz）とチャンネル数を保存
         self.samplerate = samplerate
         self.channels = channels
@@ -36,7 +49,19 @@ class Processor:
 # Gate（ゲート）処理
 # - フレーム毎の RMS レベルがしきい値未満のチャンクをミュートする。
 class GateProcessor(Processor):
+    """RMS ベースのノイズゲートプロセッサ。
+
+    各フレームの RMS レベルがしきい値（dB）未満の場合にそのフレームをミュートする。
+    """
+
     def __init__(self, samplerate=44100, channels=1, threshold: float = -40.0, **params):
+        """ゲートプロセッサを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+            threshold: ゲートのしきい値（dB）。デフォルトは -40.0。
+        """
         super().__init__(samplerate, channels, **params)
         # threshold はデシベル（dB）で指定。-40dB など。
         self.threshold = threshold
@@ -85,7 +110,20 @@ class GateProcessor(Processor):
 # - ブロック間でフィルタ状態（過去の入力・出力）を保持し、連続した信号に対して
 #   安定したフィルタリングを行う。
 class HighpassProcessor(Processor):
+    """1次差分ハイパスフィルタプロセッサ。
+
+    指定カットオフ周波数以下の低周波成分を減衰させる。
+    ブロック間でフィルタ状態を保持して連続信号を安定処理する。
+    """
+
     def __init__(self, samplerate=44100, channels=1, cutoff: float = 80.0, **params):
+        """ハイパスフィルタプロセッサを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+            cutoff: カットオフ周波数（Hz）。デフォルトは 80.0。
+        """
         super().__init__(samplerate, channels, **params)
         # カットオフ周波数（Hz）
         self.cutoff = cutoff
@@ -151,6 +189,11 @@ class HighpassProcessor(Processor):
 # - 各フレームの実効値（RMS）をデシベル換算し、閾値を超える部分に対して比率に応じた
 #   ゲイン低下を適用する（ソフトコンプレッション）。
 class CompressorProcessor(Processor):
+    """RMS ベースのダイナミクスコンプレッサープロセッサ。
+
+    閾値を超えたフレームに対してレシオに応じたゲイン圧縮を適用する。
+    """
+
     def __init__(
         self,
         samplerate=44100,
@@ -159,6 +202,14 @@ class CompressorProcessor(Processor):
         threshold: float = -20.0,
         **params,
     ):
+        """コンプレッサープロセッサを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+            ratio: 圧縮比（1.0 以上）。デフォルトは 2.0。
+            threshold: 圧縮開始しきい値（dB）。デフォルトは -20.0。
+        """
         super().__init__(samplerate, channels, **params)
         # ratio: 圧縮比（1.0 は無効）
         self.ratio = ratio
@@ -210,7 +261,20 @@ class CompressorProcessor(Processor):
 # - 強さに応じて低域を滑らかにし、環境ノイズの成分を抑える試みを行う。
 # - 出力振幅が非常に小さい場合はフロア値を掛けて極端なゼロ化を避ける。
 class DeHissProcessor(Processor):
+    """簡易ローパスフィルタによるデヒス（ノイズ低減）プロセッサ。
+
+    強度（strength）に応じたカットオフで 1 次 LPF を適用し、
+    高周波ノイズ成分を抑制する。
+    """
+
     def __init__(self, samplerate=44100, channels=1, strength: float = 0.5, **params):
+        """デヒスプロセッサを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+            strength: ノイズ低減強度（0.0〜1.0）。デフォルトは 0.5。
+        """
         super().__init__(samplerate, channels, **params)
         # strength: 0.0-1.0 の範囲で強さを指定（大きいほど強く低域を通す）
         self.strength = strength

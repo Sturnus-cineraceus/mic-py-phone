@@ -9,10 +9,23 @@ DEFAULT_WIN_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.
 
 
 def download_and_extract_ffmpeg(dest_dir: str, url: str = None):
-    """Download ffmpeg zip for the current platform and extract ffmpeg binary
+    """現在のプラットフォーム向け ffmpeg を zip でダウンロードし、dest_dir/bin に展開する。
+
+    Download ffmpeg zip for the current platform and extract ffmpeg binary
     into dest_dir/bin (creates directories as needed).
 
-    Returns path to the ffmpeg executable on success.
+    ダウンロードの進捗はコンソールに出力される。
+    ディレクトリが存在しない場合は自動的に作成する。
+
+    Args:
+        dest_dir: ffmpeg を展開する先のディレクトリパス。
+        url: ダウンロード元 URL。省略時は Windows 向けのデフォルト URL を使用。
+
+    Returns:
+        str: 展開された ffmpeg 実行ファイルの絶対パス。
+
+    Raises:
+        RuntimeError: アーカイブ内に ffmpeg バイナリが見つからない場合。
     """
     if url is None:
         url = DEFAULT_WIN_URL
