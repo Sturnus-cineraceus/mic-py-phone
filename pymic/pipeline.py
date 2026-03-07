@@ -171,6 +171,7 @@ class BypassPipeline:
         Args:
             settings_snapshot: 新しい設定を含む辞書。
         """
+        old = self.settings or {}
         new = settings_snapshot or {}
         self.settings = new
         # log what changed between old and new (shallow diff)

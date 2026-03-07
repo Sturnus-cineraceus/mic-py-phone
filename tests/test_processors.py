@@ -50,6 +50,7 @@ def test_compressor_reduces_above_threshold():
 
 def test_dehiss_process_no_crash_and_shape():
     """DeHissProcessor がクラッシュせず、出力形状が入力と一致することを確認する。"""
+    frames = np.random.randn(128, 1).astype(np.float32) * 0.01
     dh = DeHissProcessor(samplerate=44100, channels=1, strength=0.5)
     out = dh.process(frames)
     assert out.shape == frames.shape

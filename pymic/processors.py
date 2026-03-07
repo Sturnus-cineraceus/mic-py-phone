@@ -53,6 +53,8 @@ class GateProcessor(Processor):
         super().__init__(samplerate, channels, **params)
         # threshold はデシベル（dB）で指定。-40dB など。
         self.threshold = threshold
+
+    def set_params(self, threshold: Optional[float] = None, **params):
         """
         ゲートのしきい値を更新する。
         - `threshold` が None でなければ内部値を更新し、残りは親に委譲する。
@@ -190,6 +192,8 @@ class CompressorProcessor(Processor):
         self.ratio = ratio
         # threshold: dB 単位のしきい値
         self.threshold = threshold
+
+    def set_params(self, ratio: Optional[float] = None, threshold: Optional[float] = None, **params):
         """
         コンプレッサーの比率（ratio）および閾値（threshold）を更新する。
         """
@@ -245,6 +249,8 @@ class DeHissProcessor(Processor):
         super().__init__(samplerate, channels, **params)
         # strength: 0.0-1.0 の範囲で強さを指定（大きいほど強く低域を通す）
         self.strength = strength
+
+    def set_params(self, strength: Optional[float] = None, **params):
         """
         ノイズ低減強度を更新する。
         """

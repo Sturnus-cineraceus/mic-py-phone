@@ -256,6 +256,8 @@ class BypassController:
             成功時: {"running": False}
             失敗時: {"error": "エラーメッセージ"}
         """
+        if self.stream is None:
+            return {"error": "not running"}
         try:
             try:
                 self.stream.stop()
