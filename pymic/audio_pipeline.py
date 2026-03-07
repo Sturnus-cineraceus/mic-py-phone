@@ -20,6 +20,12 @@ _logger = logging.getLogger(__name__)
 
 
 class NoiseGate:
+    """RMS ベースのスムージングエンベロープによるノイズゲート。
+
+    アタック／リリース時定数を用いて信号をなめらかにゲートし、
+    閾値以下のブロックをミュートする。
+    """
+
     def __init__(
         self,
         samplerate: int,
@@ -27,6 +33,14 @@ class NoiseGate:
         attack_ms: float = 10.0,
         release_ms: float = 100.0,
     ):
+        """ノイズゲートを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            threshold_db: ゲートが開く閾値（dB）。
+            attack_ms: アタック時間（ミリ秒）。
+            release_ms: リリース時間（ミリ秒）。
+        """
         self.sr = float(samplerate)
         self.threshold_db = float(threshold_db)
         self.attack_ms = float(attack_ms)
@@ -41,7 +55,11 @@ class NoiseGate:
         self.env = 0.0
 
     def _rms(self, block: np.ndarray) -> float:
-        # block shape: (frames, channels)
+        """ブロック全チャンネルの RMS（二乗平均平方根）を返す。
+
+        Args:
+            block: (フレーム数, チャンネル数) の numpy 配列。
+        """
         if block.size == 0:
             return 0.0
         # compute RMS across all channels
@@ -137,6 +155,11 @@ def run_stream(
 
 
 def _parse_args(argv=None):
+    """コマンドライン引数を解析して名前空間オブジェクトを返す。
+
+    Args:
+        argv: 解析する引数リスト。None の場合は sys.argv を使用する。
+    """
     p = argparse.ArgumentParser(
         description="リアルタイムでゲインとノイズゲートをかける"
     )

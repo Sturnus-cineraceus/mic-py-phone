@@ -11,11 +11,23 @@ class SinkManager:
     """
 
     def __init__(self):
+        """SinkManager を初期化する。内部のシンク辞書とロックを設定する。"""
         self._sinks = {}
         self._sinks_lock = threading.Lock()
         self._next_sink_id = 1
 
     def register(self, sink_callable, *, policy: str = "drop", maxsize: int = 16):
+        """シンクを登録してワーカースレッドを起動する。
+
+        Args:
+            sink_callable: フレームを受け取る呼び出し可能オブジェクト（または consume メソッドを持つオブジェクト）。
+            policy: キューが満杯時の動作。"drop"（デフォルト）または "block"。
+            maxsize: キューの最大サイズ。
+
+        Returns:
+            成功時: {"ok": True, "id": int}
+            失敗時: {"error": "エラーメッセージ"}
+        """
         try:
             with self._sinks_lock:
                 sid = self._next_sink_id
@@ -59,6 +71,15 @@ class SinkManager:
             return {"error": str(e)}
 
     def unregister(self, sid):
+        """指定 ID のシンクを登録解除し、ワーカースレッドを停止する。
+
+        Args:
+            sid: register() が返したシンク ID。
+
+        Returns:
+            成功時: {"ok": True}
+            失敗時: {"error": "エラーメッセージ"}
+        """
         try:
             with self._sinks_lock:
                 info = self._sinks.pop(sid, None)
@@ -90,6 +111,11 @@ class SinkManager:
             return {"error": str(e)}
 
     def dispatch(self, frames):
+        """全登録シンクのキューにフレームを投入する（ノンブロッキング）。
+
+        Args:
+            frames: 配信する音声フレームの numpy 配列。
+        """
         try:
             if frames is None:
                 return
@@ -123,6 +149,7 @@ class SinkManager:
             pass
 
     def has_sinks(self):
+        """登録済みシンクが存在するかどうかを返す。"""
         try:
             with self._sinks_lock:
                 return bool(self._sinks)
@@ -130,6 +157,14 @@ class SinkManager:
             return False
 
     def get_metrics(self, sid):
+        """指定 ID のシンクのメトリクス（処理済み数・ドロップ数）を返す。
+
+        Args:
+            sid: シンク ID。
+
+        Returns:
+            {"metrics": {"dropped": int, "processed": int}} または {"error": "エラーメッセージ"}
+        """
         try:
             with self._sinks_lock:
                 info = self._sinks.get(sid)

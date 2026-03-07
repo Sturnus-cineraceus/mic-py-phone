@@ -7,7 +7,13 @@ import logging
 #   `set_params` で柔軟にパラメータ更新できるようにする。
 class Processor:
     def __init__(self, samplerate: int = 44100, channels: int = 1, **params):
-        # サンプルレート（Hz）とチャンネル数を保存
+        """プロセッサの基底クラスを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+            **params: サブクラス固有の追加パラメータ。
+        """
         self.samplerate = samplerate
         self.channels = channels
         # 処理ごとの追加パラメータを辞書で保持
@@ -37,6 +43,13 @@ class Processor:
 # - フレーム毎の RMS レベルがしきい値未満のチャンクをミュートする。
 class GateProcessor(Processor):
     def __init__(self, samplerate=44100, channels=1, threshold: float = -40.0, **params):
+        """ゲートプロセッサを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+            threshold: ゲート閾値（dB）。
+        """
         super().__init__(samplerate, channels, **params)
         # threshold はデシベル（dB）で指定。-40dB など。
         self.threshold = threshold
@@ -86,6 +99,13 @@ class GateProcessor(Processor):
 #   安定したフィルタリングを行う。
 class HighpassProcessor(Processor):
     def __init__(self, samplerate=44100, channels=1, cutoff: float = 80.0, **params):
+        """ハイパスフィルタプロセッサを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+            cutoff: カットオフ周波数（Hz）。
+        """
         super().__init__(samplerate, channels, **params)
         # カットオフ周波数（Hz）
         self.cutoff = cutoff
@@ -159,6 +179,14 @@ class CompressorProcessor(Processor):
         threshold: float = -20.0,
         **params,
     ):
+        """コンプレッサープロセッサを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+            ratio: 圧縮比（1.0 は無効）。
+            threshold: 圧縮開始閾値（dB）。
+        """
         super().__init__(samplerate, channels, **params)
         # ratio: 圧縮比（1.0 は無効）
         self.ratio = ratio
@@ -211,6 +239,13 @@ class CompressorProcessor(Processor):
 # - 出力振幅が非常に小さい場合はフロア値を掛けて極端なゼロ化を避ける。
 class DeHissProcessor(Processor):
     def __init__(self, samplerate=44100, channels=1, strength: float = 0.5, **params):
+        """デヒス（簡易ノイズ低減）プロセッサを初期化する。
+
+        Args:
+            samplerate: サンプルレート（Hz）。
+            channels: チャンネル数。
+            strength: ノイズ低減の強さ（0.0〜1.0）。
+        """
         super().__init__(samplerate, channels, **params)
         # strength: 0.0-1.0 の範囲で強さを指定（大きいほど強く低域を通す）
         self.strength = strength

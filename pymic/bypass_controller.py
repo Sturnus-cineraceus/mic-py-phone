@@ -15,6 +15,12 @@ class BypassController:
     """
 
     def __init__(self, sink_mgr, collect_settings_callable):
+        """BypassController を初期化する。
+
+        Args:
+            sink_mgr: フレームを配信する SinkManager インスタンス。
+            collect_settings_callable: 現在の設定スナップショットを返す呼び出し可能オブジェクト。
+        """
         self.sink_mgr = sink_mgr
         self.collect_settings = collect_settings_callable
         self.stream = None
@@ -29,10 +35,20 @@ class BypassController:
         self._logger = logging.getLogger(__name__)
 
     def is_running(self):
+        """バイパスストリームが動作中かどうかを返す。"""
         return self.stream is not None
 
     def start(self, selected_input, selected_output):
-        self._logger.debug("[Bypass] start() called sel_in=%s sel_out=%s", selected_input, selected_output)
+        """指定デバイスでバイパスストリームを開始する。
+
+        Args:
+            selected_input: 入力デバイスのインデックス。
+            selected_output: 出力デバイスのインデックス。
+
+        Returns:
+            成功時: {"running": True}
+            失敗時: {"error": "エラーメッセージ"}
+        """
 
         if not audio_device.is_available():
             self._logger.error("sounddevice library not available")
@@ -234,6 +250,12 @@ class BypassController:
             return {"error": str(e), "trace": traceback.format_exc()}
 
     def stop(self):
+        """バイパスストリームとパイプラインを停止する。
+
+        Returns:
+            成功時: {"running": False}
+            失敗時: {"error": "エラーメッセージ"}
+        """
         if self.stream is None:
             return {"error": "not running"}
         try:
@@ -279,6 +301,14 @@ class BypassController:
 
     # Transcription / VAD control moved here to centralize numpy usage
     def set_transcribe_enabled(self, enabled: bool):
+        """VAD（音声区間検出）シンクの有効・無効を切り替える。
+
+        Args:
+            enabled: True で有効化、False で無効化。
+
+        Returns:
+            {"enabled": bool} または {"error": "エラーメッセージ"}
+        """
         try:
             enabled = bool(enabled)
             self.vad_enabled = enabled
@@ -396,6 +426,13 @@ class BypassController:
             return {"error": str(e)}
 
     def get_levels(self):
+        """入力・出力の RMS レベルを辞書形式で返す。
+
+        パイプラインが存在する場合はそちらの値を優先する。
+
+        Returns:
+            {"input_rms": float, "output_rms": float}
+        """
         try:
             if self._pipeline is not None:
                 return self._pipeline.get_levels()
